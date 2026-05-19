@@ -6,38 +6,159 @@
     <title>{{ tenant.name }} Login</title>
     <style>
         :root {
-            color-scheme: light;
-            background: #f8fafc;
-            color: #0f172a;
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --bg: #f0f2f5;
+            --surface: #ffffff;
+            --text: #1c1e21;
+            --muted: #65676b;
+            --primary: #1877f2;
+            --primary-strong: #166fe5;
+            --danger: #e41e3f;
+            --border: #e4e6eb;
+            --shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
         }
         [data-theme="dark"] {
-            background: #0f172a;
-            color: #f8fafc;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --primary: #38bdf8;
+            --primary-strong: #0ea5e9;
+            --danger: #f87171;
+            --border: #334155;
+            --shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
         }
-        body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: inherit; color: inherit; }
-        .login-card { width: min(520px, 100%); background: rgba(255,255,255,0.95); border-radius: 28px; padding: 42px; box-shadow: 0 32px 90px rgba(15, 23, 42, 0.18); border: 1px solid rgba(15, 23, 42, 0.08); }
-        [data-theme="dark"] .login-card { background: rgba(15, 23, 42, 0.95); border-color: rgba(148, 163, 184, 0.16); }
-        h1 { margin: 0 0 10px; font-size: 2rem; color: #0f766e; }
-        [data-theme="dark"] h1 { color: #5eead4; }
-        p { margin: 0 0 26px; color: #475569; }
-        [data-theme="dark"] p { color: #cbd5e1; }
-        label { display: block; margin-bottom: 8px; color: #475569; font-size: .95rem; }
-        [data-theme="dark"] label { color: #cbd5e1; }
-        input { width: 100%; padding: 14px 16px; margin-bottom: 18px; border-radius: 16px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; }
-        [data-theme="dark"] input { border-color: #334155; background: #0f172a; color: #e2e8f0; }
-        button { width: 100%; padding: 14px 0; border: none; border-radius: 16px; background: #0f766e; color: #ffffff; font-weight: 700; cursor: pointer; }
-        .message { margin-bottom: 18px; padding: 14px 16px; border-radius: 18px; background: #fee2e2; color: #991b1b; }
-        .meta { margin-top: 24px; color: #64748b; font-size: .95rem; }
-        .meta a { color: #0f766e; }
-        .theme-toggle { margin-top: 20px; border: 1px solid #cbd5e1; border-radius: 16px; padding: 11px 16px; background: transparent; color: inherit; cursor: pointer; }
-        [data-theme="dark"] .theme-toggle { border-color: #334155; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            background: var(--bg); 
+            color: var(--text); 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 24px;
+        }
+        .login-card { 
+            width: min(480px, 100%); 
+            background: var(--surface); 
+            border-radius: 16px; 
+            padding: 40px; 
+            box-shadow: var(--shadow); 
+            border: 1px solid var(--border); 
+            position: relative; /* Position relative taake toggle button iske andar absolute align ho sake */
+        }
+        .theme-toggle { 
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            border: 1px solid var(--border); 
+            border-radius: 20px; 
+            padding: 6px 12px; 
+            background: var(--bg); 
+            color: var(--text); 
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer; 
+            transition: all 0.2s ease;
+        }
+        .theme-toggle:hover { 
+            background: var(--border);
+            transform: scale(1.03);
+        }
+        .brand-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            margin-bottom: 24px;
+            gap: 14px;
+            margin-top: 10px; /* Space for the top right toggle button */
+        }
+        .brand-logo-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--primary);
+            color: #ffffff;
+            border-radius: 50%; 
+            display: grid;
+            place-items: center;
+            font-weight: 700;
+            font-size: 1.6rem;
+            box-shadow: 0 4px 12px rgba(24, 119, 242, 0.2);
+            transition: transform 0.2s;
+        }
+        [data-theme="dark"] .brand-logo-icon {
+            box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+        }
+        h1 { font-size: 1.7rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+        p.subtitle { color: var(--muted); font-size: 0.92rem; line-height: 1.5; margin-top: -4px; }
+        
+        label { display: block; margin-bottom: 6px; color: var(--text); font-size: .88rem; font-weight: 600; margin-top: 4px; }
+        .input-group { position: relative; margin-bottom: 20px; }
+        input { 
+            width: 100%; 
+            padding: 12px 14px; 
+            border-radius: 8px; 
+            border: 1px solid var(--border); 
+            background: var(--bg); 
+            color: var(--text); 
+            outline: none;
+            font-size: 0.95rem;
+            transition: border-color 0.15s, background-color 0.15s;
+        }
+        input:focus { border-color: var(--primary); background: var(--surface); }
+        
+        button[type="submit"] { 
+            width: 100%; 
+            padding: 12px 0; 
+            border: none; 
+            border-radius: 8px; 
+            background: var(--primary); 
+            color: #ffffff; 
+            font-weight: 600; 
+            font-size: 0.95rem;
+            cursor: pointer; 
+            transition: background 0.15s;
+            margin-top: 10px;
+        }
+        button[type="submit"]:hover { background: var(--primary-strong); }
+        
+        .message { 
+            margin-bottom: 20px; 
+            padding: 12px 14px; 
+            border-radius: 8px; 
+            background: #fff1f2; 
+            color: var(--danger); 
+            border-left: 4px solid var(--danger);
+            font-size: 0.88rem;
+            text-align: left;
+            width: 100%;
+        }
+        [data-theme="dark"] .message { background: #7f1d1d; color: #fff; }
+
+        .meta { 
+            margin-top: 28px; 
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            color: var(--muted); 
+            font-size: 0.85rem; 
+            line-height: 1.5;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <h1>{{ tenant.name }} Portal</h1>
-        <p>Secure school administration access. Use the credentials created by the super admin.</p>
+        <!-- Theme toggle placed cleanly inside the card layout -->
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeButton">🌙 Dark</button>
+
+        <div class="brand-header">
+            <div class="brand-logo-icon">A</div>
+            <h1>{{ tenant.name }}</h1>
+            <p class="subtitle">Secure management access gateway. Enter your authorized administrative login credentials below.</p>
+        </div>
 
         {% if error %}
             <div class="message">{{ error }}</div>
@@ -46,14 +167,21 @@
         <form method="post" action="{% url 'school_portal_login' schema_name=tenant.schema_name %}">
             {% csrf_token %}
             <label for="username">Username</label>
-            <input id="username" name="username" type="text" autocomplete="username" required>
+            <div class="input-group">
+                <input id="username" name="username" type="text" autocomplete="username" required>
+            </div>
+            
             <label for="password">Password</label>
-            <input id="password" name="password" type="password" autocomplete="current-password" required>
-            <button type="submit">Login</button>
+            <div class="input-group">
+                <input id="password" name="password" type="password" autocomplete="current-password" required>
+            </div>
+            
+            <button type="submit">Log In</button>
         </form>
 
-        <button class="theme-toggle" onclick="toggleTheme()" id="themeButton">Toggle theme</button>
-        <div class="meta">Super admin only: use the shared admin panel at <a href="/admin/">/admin/</a>.</div>
+        <div class="meta">
+            Having trouble? Please contact the school administration or system support for assistance.
+        </div>
     </div>
 
     <script>
@@ -65,12 +193,16 @@
             const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
             root.setAttribute('data-theme', next);
             localStorage.setItem('schoolPortalTheme', next);
-            document.getElementById('themeButton').textContent = next === 'dark' ? 'Light mode' : 'Dark mode';
+            updateButtonText(next);
+        }
+
+        function updateButtonText(theme) {
+            document.getElementById('themeButton').textContent = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            const theme = root.getAttribute('data-theme');
-            document.getElementById('themeButton').textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
+            const theme = root.getAttribute('data-theme') || 'light';
+            updateButtonText(theme);
         });
     </script>
 </body>
