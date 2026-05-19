@@ -34,7 +34,7 @@ def add_student_instance(request):
 
     if request.method == 'POST':
         form = StudentAdmissionForm(request.POST)
-        if form.is_validate_or_not_yet := form.is_valid():
+        if form.is_valid():
             student = form.save(commit=False)
             # Automatic dynamic sequence token generation for strong isolation tracking
             total_students = Student.objects.count() + 1
