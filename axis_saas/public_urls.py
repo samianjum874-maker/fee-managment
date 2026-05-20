@@ -8,6 +8,7 @@ from django import forms
 from axis_saas.models import SchoolClient
 from .models import Student
 from .tenant_views import StudentAdmissionForm
+from django.db.models import Q
 from django_tenants.utils import schema_context
 
 # ----------------------------------------------------------------------
@@ -79,15 +80,30 @@ def school_students_list(request, schema_name, tenant=None):
     grade_filter = request.GET.get('grade', '')
     section_filter = request.GET.get('section', '')
     status_filter = request.GET.get('status', '')
+    search_query = request.GET.get('search', '').strip()
     
     with schema_context(tenant.schema_name):
         students_qs = Student.objects.all()
+        
+        # Apply search across multiple fields
+        if search_query:
+            students_qs = students_qs.filter(
+                Q(roll_number__icontains=search_query) |
+                Q(name__icontains=search_query) |
+                Q(father_name__icontains=search_query) |
+                Q(father_cnic__icontains=search_query) |
+                Q(grade__icontains=search_query) |
+                Q(section__icontains=search_query) |
+                Q(status__icontains=search_query)
+            )
+        
         if grade_filter:
             students_qs = students_qs.filter(grade=grade_filter)
         if section_filter:
             students_qs = students_qs.filter(section=section_filter)
         if status_filter:
             students_qs = students_qs.filter(status=status_filter)
+            
         students = students_qs.order_by('-enrolled_on')
         
         # Get distinct grades and sections for filter dropdowns
@@ -103,8 +119,8 @@ def school_students_list(request, schema_name, tenant=None):
         'sections': sections,
         'status_choices': status_choices,
         'logo_url': logo_url,
+        'search_query': search_query,
     })
-
 @tenant_login_required
 def school_add_student(request, schema_name, tenant=None):
     with schema_context(tenant.schema_name):

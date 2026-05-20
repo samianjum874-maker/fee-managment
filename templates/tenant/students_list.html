@@ -16,9 +16,13 @@
     </div>
 </div>
 
-<!-- Filter Form -->
+<!-- Search & Filter Form -->
 <div class="page-card" style="margin-bottom: 20px;">
     <form method="get" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+        <div class="field-card" style="margin: 0; flex: 2;">
+            <label>Search</label>
+            <input type="text" name="search" placeholder="Roll No, Name, Father Name, CNIC, Class, Section, Status" value="{{ search_query }}" style="width: 100%;">
+        </div>
         <div class="field-card" style="margin: 0;">
             <label>Grade/Class</label>
             <select name="grade" style="width: 150px;">
