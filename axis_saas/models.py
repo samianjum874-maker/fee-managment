@@ -106,3 +106,102 @@ class FeeStructure(models.Model):
         # Automatic Dynamic Cascade Update Matrix
         # Jab bhi admin is class ki fee set ya change karega, is class ke saare students ki automatic update ho jayegi
         Student.objects.filter(grade=self.grade).update(custom_fee=self.monthly_fee)
+
+# ----------------------------------------------------------------------
+# FEE MANAGEMENT MODELS
+# ----------------------------------------------------------------------
+from decimal import Decimal
+from datetime import date
+
+class FeeRecord(models.Model):
+    """Monthly fee record for a student"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('partial', 'Partially Paid'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('waived', 'Waived'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fee_records')
+    month = models.PositiveSmallIntegerField()  # 1-12
+    year = models.PositiveSmallIntegerField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    due_date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    remarks = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['student', 'month', 'year']
+        ordering = ['-year', '-month']
+
+    @property
+    def remaining(self):
+        return self.amount - self.paid_amount
+
+    @property
+    def is_fully_paid(self):
+        return self.paid_amount >= self.amount
+
+    def save(self, *args, **kwargs):
+        if self.paid_amount >= self.amount:
+            self.status = 'paid'
+        elif self.paid_amount > 0:
+            self.status = 'partial'
+        elif date.today() > self.due_date and self.paid_amount == 0:
+            self.status = 'overdue'
+        else:
+            self.status = 'pending'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.student.name} - {self.month}/{self.year} - {self.status}"
+
+
+class PaymentTransaction(models.Model):
+    PAYMENT_MODE_CHOICES = [
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('cheque', 'Cheque'),
+        ('online', 'Online'),
+    ]
+    PAYMENT_TYPE_CHOICES = [
+        ('full', 'Full Payment'),
+        ('partial', 'Partial Payment'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='payments')
+    fee_records = models.ManyToManyField(FeeRecord, related_name='payments')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_date = models.DateField(auto_now_add=True)
+    payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES, default='cash')
+    payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES, default='full')
+    receipt_number = models.CharField(max_length=50, unique=True, blank=True)
+    remarks = models.TextField(blank=True, null=True)
+    created_by = models.CharField(max_length=150, blank=True)  # admin username
+
+    def save(self, *args, **kwargs):
+        if not self.receipt_number:
+            # Generate receipt number: RCPT-YYYYMMDD-XXXX
+            today = date.today()
+            prefix = f"RCPT-{today.strftime('%Y%m%d')}"
+            last = PaymentTransaction.objects.filter(receipt_number__startswith=prefix).count()
+            self.receipt_number = f"{prefix}-{last+1:04d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.receipt_number} - {self.student.name} - {self.amount}"
+
+
+class SchoolFeeSettings(models.Model):
+    """Tenant-specific fee settings"""
+    tenant = models.OneToOneField(SchoolClient, on_delete=models.CASCADE, related_name='fee_settings')
+    fee_generation_day = models.PositiveSmallIntegerField(default=1, help_text="Day of month (1-31) to generate monthly fees")
+    late_fee_penalty = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Penalty percentage after due date")
+    due_date_offset = models.PositiveSmallIntegerField(default=15, help_text="Days after generation date when fee is due")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Fee Settings for {self.tenant.name}"

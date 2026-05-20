@@ -1,0 +1,22 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Pending Fees{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Pending Fees</h1><p>Total Pending: Rs {{ total_pending }}</p></div>
+<div class="page-card" style="overflow-x:auto;">
+    <table style="width:100%">
+        <tr><th>Roll No</th><th>Student Name</th><th>Month/Year</th><th>Amount</th><th>Paid</th><th>Due Date</th><th>Status</th><th>Action</th></tr>
+        {% for fr in fee_records %}
+        <tr>
+            <td>{{ fr.student.roll_number }}</td>
+            <td>{{ fr.student.name }}</td>
+            <td>{{ fr.month }}/{{ fr.year }}</td>
+            <td>Rs {{ fr.amount }}</td>
+            <td>Rs {{ fr.paid_amount }}</td>
+            <td>{{ fr.due_date|date:"Y-m-d" }}</td>
+            <td>{{ fr.get_status_display }}</td>
+            <td><a href="{% url 'make_payment' schema_name=tenant.schema_name student_id=fr.student.id %}">Pay</a></td>
+        </tr>
+        {% empty %}<tr><td colspan="8">No pending fees.</td></tr>{% endfor %}
+    </table>
+</div>
+{% endblock %}

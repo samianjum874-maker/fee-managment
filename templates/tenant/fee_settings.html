@@ -1,0 +1,14 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Fee Settings{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Fee Generation Settings</h1></div>
+<div class="page-card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="field-card"><label>Fee Generation Day (1-31)</label>{{ form.fee_generation_day }}</div>
+        <div class="field-card"><label>Due Date Offset (days after generation)</label>{{ form.due_date_offset }}</div>
+        <div class="field-card"><label>Late Fee Penalty (%)</label>{{ form.late_fee_penalty }}</div>
+        <button type="submit">Save Settings</button>
+    </form>
+</div>
+{% endblock %}

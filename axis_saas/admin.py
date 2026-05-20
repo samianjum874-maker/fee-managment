@@ -217,3 +217,22 @@ class TenantSecuredGroupAdmin(BaseGroupAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.tenant.schema_name == 'public'
+
+# Register Fee models
+from .models import FeeRecord, PaymentTransaction, SchoolFeeSettings
+
+@admin.register(FeeRecord)
+class FeeRecordAdmin(admin.ModelAdmin):
+    list_display = ('student', 'month', 'year', 'amount', 'paid_amount', 'status', 'due_date')
+    list_filter = ('status', 'month', 'year')
+    search_fields = ('student__name', 'student__roll_number')
+
+@admin.register(PaymentTransaction)
+class PaymentTransactionAdmin(admin.ModelAdmin):
+    list_display = ('receipt_number', 'student', 'amount', 'payment_date', 'payment_type')
+    list_filter = ('payment_type', 'payment_mode', 'payment_date')
+    search_fields = ('receipt_number', 'student__name', 'student__father_cnic')
+
+@admin.register(SchoolFeeSettings)
+class SchoolFeeSettingsAdmin(admin.ModelAdmin):
+    list_display = ('tenant', 'fee_generation_day', 'due_date_offset', 'late_fee_penalty')

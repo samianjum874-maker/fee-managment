@@ -1,4 +1,20 @@
-from django.contrib import admin, messages
+import re
+
+# Read current file to extract the necessary parts? Instead, let's reconstruct.
+# Since we have all the code in the current file, we can extract the needed blocks by pattern.
+
+with open("axis_saas/public_urls.py", "r") as f:
+    content = f.read()
+
+# Extract imports and initial code (from start to before the first urlpatterns)
+# We'll take everything from beginning up to the first '# ----------------------------------------------------------------------' that starts the urlpatterns.
+# Actually, let's take everything from start until the line '# ----------------------------------------------------------------------' that is right before the first urlpatterns.
+# But the file has multiple duplicates, so we need to be careful.
+
+# Better approach: write a new file from scratch using known good code from earlier in the conversation.
+# I'll manually reconstruct the correct public_urls.py from memory.
+
+new_content = '''from django.contrib import admin, messages
 from django.urls import path
 from django.http import HttpResponse, HttpResponseNotFound
 from django.shortcuts import redirect, render, get_object_or_404
@@ -19,7 +35,7 @@ def tenant_login_required(view_func):
         tenant = get_school_tenant(schema_name)
         if not tenant:
             return HttpResponseNotFound('School not found')
-        if not request.session.get('school_admin_authenticated') or \
+        if not request.session.get('school_admin_authenticated') or \\
            request.session.get('school_admin_schema') != tenant.schema_name:
             request.session.pop('school_admin_authenticated', None)
             request.session.pop('school_admin_schema', None)
@@ -33,7 +49,7 @@ def tenant_login_required(view_func):
 def get_school_tenant(schema_name):
     schema_name = schema_name.lower().strip()
     with schema_context('public'):
-                    tenant = SchoolClient.objects.filter(schema_name__iexact=schema_name, is_active=True).first()
+        tenant = SchoolClient.objects.filter(schema_name__iexact=schema_name, is_active=True).first()
     return tenant
 
 # ----------------------------------------------------------------------
@@ -191,8 +207,7 @@ def fee_generate(request, schema_name, tenant=None):
                 if not generate_all:
                     existing = FeeRecord.objects.filter(month=month, year=year).values_list('student_id', flat=True)
                     students = students.exclude(id__in=existing)
-                with schema_context('public'):
-                    fee_settings, _ = SchoolFeeSettings.objects.get_or_create(tenant=tenant)
+                fee_settings, _ = SchoolFeeSettings.objects.get_or_create(tenant=tenant)
                 if month == 12:
                     due_year = year + 1
                     due_month = 1
@@ -372,11 +387,8 @@ def fee_receipt(request, schema_name, receipt_id, tenant=None):
 
 @tenant_login_required
 def fee_settings(request, schema_name, tenant=None):
-    # SchoolFeeSettings lives in public schema (shared), so query outside tenant schema
-    from django_tenants.utils import schema_context
-    with schema_context('public'):
-                    settings_obj, created = SchoolFeeSettings.objects.get_or_create(tenant=tenant)
     with schema_context(tenant.schema_name):
+        settings_obj, created = SchoolFeeSettings.objects.get_or_create(tenant=tenant)
         if request.method == 'POST':
             form = FeeSettingsForm(request.POST, instance=settings_obj)
             if form.is_valid():
@@ -412,3 +424,10 @@ urlpatterns = [
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+'''
+
+# Write the new file
+with open("axis_saas/public_urls.py", "w") as f:
+    f.write(new_content)
+
+print("✅ Created clean public_urls.py with all views defined before urlpatterns")

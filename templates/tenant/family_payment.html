@@ -1,0 +1,12 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Family Payment{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Pay by Father CNIC</h1></div>
+<div class="page-card">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Search & Pay</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Make Payment{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Pay Fees for {{ student.name }}</h1><p>Pending Total: Rs {{ total_pending }}</p></div>
+<div class="page-card">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Submit Payment</button>
+    </form>
+</div>
+<div class="page-card">
+    <h3>Pending Fee Records</h3>
+    <table>
+        <tr><th>Month/Year</th><th>Amount</th><th>Paid</th><th>Remaining</th></tr>
+        {% for fr in pending_fees %}
+        <tr><td>{{ fr.month }}/{{ fr.year }}</td><td>Rs {{ fr.amount }}</td><td>Rs {{ fr.paid_amount }}</td><td>Rs {{ fr.remaining }}</td></tr>
+        {% empty %}<tr><td colspan="4">No pending fees for this student.</td></tr>{% endfor %}
+    </table>
+</div>
+{% endblock %}

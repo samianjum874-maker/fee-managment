@@ -1,0 +1,22 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Fee Structure{% endblock %}
+{% block nav_fee_active %}active{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Fee Structure</h1><p>Set monthly fee per class</p></div>
+<div class="page-card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="field-card"><label>Class/Grade</label>{{ form.grade }}</div>
+        <div class="field-card"><label>Monthly Fee (Rs)</label>{{ form.monthly_fee }}</div>
+        <button type="submit">Save</button>
+    </form>
+</div>
+<div class="page-card">
+    <table style="width:100%">
+        <tr><th>Class</th><th>Monthly Fee</th><th>Last Updated</th></tr>
+        {% for fs in fee_structures %}
+        <tr><td>{{ fs.grade }}</td><td>Rs {{ fs.monthly_fee }}</td><td>{{ fs.updated_at|date:"Y-m-d" }}</td></tr>
+        {% empty %}<tr><td colspan="3">No fee structures defined.</td></tr>{% endfor %}
+    </table>
+</div>
+{% endblock %}

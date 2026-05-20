@@ -1,0 +1,14 @@
+{% extends 'tenant/base.html' %}
+{% block title %}Generate Monthly Fees{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Generate Monthly Fees</h1></div>
+<div class="page-card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="field-card"><label>Month</label>{{ form.month }}</div>
+        <div class="field-card"><label>Year</label>{{ form.year }}</div>
+        <div class="field-card">{{ form.generate_for_all }} <label>Generate for all students (including those already have fee record)</label></div>
+        <button type="submit">Generate</button>
+    </form>
+</div>
+{% endblock %}

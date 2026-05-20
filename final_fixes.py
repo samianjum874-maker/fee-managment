@@ -1,5 +1,28 @@
+import re
+
+# 1. Fix forms.py: add SchoolFeeSettings import
+forms_path = "axis_saas/forms.py"
+with open(forms_path, 'r') as f:
+    forms_content = f.read()
+
+old_import = "from .models import FeeRecord, PaymentTransaction, FeeStructure, Student"
+new_import = "from .models import FeeRecord, PaymentTransaction, FeeStructure, Student, SchoolFeeSettings"
+if old_import in forms_content:
+    forms_content = forms_content.replace(old_import, new_import)
+    with open(forms_path, 'w') as f:
+        f.write(forms_content)
+    print("✅ Added SchoolFeeSettings import to forms.py")
+else:
+    print("⚠️ Could not find the import line; manually check forms.py")
+
+# 2. Fix student_profile.html: move fee history inside body block
+profile_path = "templates/tenant/student_profile.html"
+with open(profile_path, 'r') as f:
+    profile = f.read()
+
+# Replace the entire file with a corrected version
+corrected_profile = """{% load fee_extras %}
 {% extends 'tenant/base.html' %}
-{% load fee_extras %}
 
 {% block title %}{{ tenant.name }} | Student Profile{% endblock %}
 
@@ -59,8 +82,15 @@
                     {% empty %}—{% endfor %}
                 </td>
             </tr>
-            {% empty %}<tr><td colspan="5">No fee records found.{% endfor %}
+            {% empty %}<tr><td colspan="5">No fee records found.</td></tr>{% endfor %}
         </table>
     </div>
 </div>
-{% endblock %}
+{% endblock %}"""
+
+with open(profile_path, 'w') as f:
+    f.write(corrected_profile)
+print("✅ Fixed student_profile.html (fee history inside block)")
+
+print("\n✅ All fixes applied. Restart server:")
+print("   python manage.py runserver")
