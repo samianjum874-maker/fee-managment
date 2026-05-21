@@ -1,20 +1,450 @@
 {% extends 'tenant/base.html' %}
-{% block title %}Fee Collection{% endblock %}
+{% block title %}Fee Collection | {{ tenant.name }}{% endblock %}
 {% block body %}
-<h1>Fee Collection</h1>
-<div class="card" style="margin-top: 20px;">
-    <form method="post">
-        {% csrf_token %}
-        <div class="form-group"><label>Student</label>{{ form.student }}</div>
-        <div class="form-group"><label>Amount (₹)</label>{{ form.amount }}</div>
-        <div class="form-group"><label>Payment Mode</label>{{ form.payment_mode }}</div>
-        <div class="form-group"><label>Remarks</label>{{ form.remarks }}</div>
-        <button type="submit" class="btn-primary">Process Payment</button>
-    </form>
+<!-- Header with stats -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Fee Collection</h1>
+        <p class="page-desc">Collect fees, view pending records, and track payment history</p>
+    </div>
+    <div class="header-stats">
+        <div class="stat-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-3.31 0-6 1.79-6 4s2.69 4 6 4 6-1.79 6-4-2.69-4-6-4z"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <span>Today: ₹{{ today_collection|default:0 }}</span>
+        </div>
+        <div class="stat-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h3l3-9 3 18 3-9h3"/></svg>
+            <span>Pending Total: ₹{{ total_pending_all|default:0 }}</span>
+        </div>
+    </div>
 </div>
+
+<!-- Search & Student Selector -->
+<div class="search-card">
+    <div class="search-input-group">
+        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="studentSearch" placeholder="Search by name, roll number or father name..." class="search-input">
+    </div>
+    <div id="searchResults" class="search-results"></div>
+</div>
+
+<!-- Selected Student & Payment Form -->
 {% if selected_student %}
-<div class="card"><h3>Pending fees for {{ selected_student.name }}</h3><table class="table"><tr><th>Month/Year</th><th>Amount</th><th>Paid</th><th>Remaining</th></tr>{% for r in pending_records %}<tr><td>{{ r.month }}/{{ r.year }}</td><td>₹{{ r.amount }}</td><td>₹{{ r.paid_amount }}</td><td>₹{{ r.remaining }}</td></tr>{% endfor %}<tr><td colspan="3"><strong>Total Pending</strong></td><td><strong>₹{{ total_pending }}</strong></td></tr></table></div>
+<div class="student-panel">
+    <div class="student-info">
+        <div class="student-avatar">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </div>
+        <div>
+            <h3>{{ selected_student.name }} <span class="roll">({{ selected_student.roll_number }})</span></h3>
+            <p class="class-info">{{ selected_student.grade }} - {{ selected_student.section }} | Father: {{ selected_student.father_name }}</p>
+        </div>
+        <div class="pending-badge">Pending: ₹{{ total_pending }}</div>
+    </div>
+
+    <form method="post" class="payment-form">
+        {% csrf_token %}
+        <input type="hidden" name="student_id" value="{{ selected_student.id }}">
+        <div class="form-row">
+            <div class="form-field">
+                <label>Amount (₹)</label>
+                <input type="number" name="amount" step="0.01" required placeholder="Enter amount">
+            </div>
+            <div class="form-field">
+                <label>Payment Mode</label>
+                <select name="payment_mode">
+                    <option value="cash">💵 Cash</option>
+                    <option value="bank_transfer">🏦 Bank Transfer</option>
+                    <option value="cheque">📝 Cheque</option>
+                    <option value="online">🌐 Online</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Remarks (Optional)</label>
+                <textarea name="remarks" rows="1" placeholder="Any notes..."></textarea>
+            </div>
+            <div class="form-field submit-field">
+                <button type="submit" class="btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                    Process Payment
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Pending Fee Records Table -->
+    <div class="pending-table">
+        <h4>Pending Fee Records</h4>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Month/Year</th>
+                        <th>Amount (₹)</th>
+                        <th>Paid (₹)</th>
+                        <th>Remaining (₹)</th>
+                        <th>Due Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in pending_records %}
+                    <tr>
+                        <td>{{ r.month }}/{{ r.year }}</td>
+                        <td>₹{{ r.amount }}</td>
+                        <td>₹{{ r.paid_amount }}</td>
+                        <td class="remaining">₹{{ r.remaining }}</td>
+                        <td>{{ r.due_date|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="empty-row">No pending fees for this student</td></tr>
+                    {% endfor %}
+                    {% if pending_records %}
+                    <tr class="total-row">
+                        <td colspan="3"><strong>Total Pending</strong></td>
+                        <td colspan="2"><strong>₹{{ total_pending }}</strong></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endif %}
-<style>.form-group { margin-bottom: 16px; } .form-group label { display: block; margin-bottom: 6px; font-weight: 500; } input, select, textarea { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-alt); }</style>
-<script>document.querySelector('select[name="student"]').addEventListener('change', function(){ if(this.value) window.location.href = "{% url 'fee_collection' schema_name=tenant.schema_name %}?student_id="+this.value; });</script>
+
+<!-- Recent Payments History -->
+<div class="history-card">
+    <div class="card-header">
+        <h3>Recent Payments</h3>
+        <a href="{% url 'reports' schema_name=tenant.schema_name %}?type=collection" class="view-all">View All →</a>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Receipt No</th>
+                    <th>Student</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                    <th>Mode</th>
+                    <th>Receipt</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in recent_payments %}
+                <tr>
+                    <td><code>{{ p.receipt_number }}</code></td>
+                    <td>{{ p.student.name }}</td>
+                    <td>₹{{ p.amount }}</td>
+                    <td>{{ p.payment_date|date:"Y-m-d" }}</td>
+                    <td>{{ p.get_payment_mode_display }}</td>
+                    <td><a href="{% url 'fee_receipt' schema_name=tenant.schema_name receipt_id=p.id %}" class="receipt-link">View</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="empty-row">No payments recorded yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+.page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 0.25rem;
+}
+.page-desc {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+.header-stats {
+    display: flex;
+    gap: 1rem;
+}
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--surface-alt);
+    border-radius: 2rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+}
+.search-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+}
+.search-input-group {
+    position: relative;
+}
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+}
+.search-input {
+    width: 100%;
+    padding: 0.7rem 0.7rem 0.7rem 2.5rem;
+    border-radius: 2rem;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 0.9rem;
+}
+.search-results {
+    margin-top: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.result-item:hover {
+    background: var(--surface-alt);
+}
+.result-name {
+    font-weight: 600;
+}
+.result-roll {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-family: monospace;
+}
+.result-select {
+    background: var(--primary);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 2rem;
+    font-size: 0.75rem;
+}
+.student-panel {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+.student-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    background: var(--surface-alt);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.student-avatar {
+    width: 48px;
+    height: 48px;
+    background: var(--primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+.student-info h3 {
+    font-size: 1.2rem;
+}
+.roll {
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-weight: normal;
+}
+.class-info {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.pending-badge {
+    margin-left: auto;
+    background: var(--danger);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 2rem;
+    font-weight: 600;
+}
+.payment-form {
+    padding: 1.5rem;
+}
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.form-field label {
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+.form-field input, .form-field select, .form-field textarea {
+    padding: 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--text);
+}
+.submit-field {
+    justify-content: flex-end;
+    display: flex;
+    flex-direction: column;
+}
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: 2rem;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: center;
+}
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+.pending-table, .history-card {
+    padding: 0 1.5rem 1.5rem 1.5rem;
+}
+.history-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.card-header h3 {
+    font-size: 1.2rem;
+}
+.view-all {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+.table-responsive {
+    overflow-x: auto;
+}
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.data-table th, .data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.data-table th {
+    background: var(--surface-alt);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.remaining {
+    font-weight: 700;
+    color: var(--danger);
+}
+.total-row {
+    background: var(--surface-alt);
+    font-weight: 600;
+}
+.receipt-link {
+    color: var(--primary);
+    text-decoration: none;
+}
+.empty-row {
+    text-align: center;
+    padding: 2rem;
+    color: var(--muted);
+}
+</style>
+
+<script>
+    const searchInput = document.getElementById('studentSearch');
+    const resultsDiv = document.getElementById('searchResults');
+
+    function debounce(func, delay) {
+        let timer;
+        return function() {
+            clearTimeout(timer);
+            timer = setTimeout(() => func.apply(this, arguments), delay);
+        };
+    }
+
+    const searchStudents = debounce(async function() {
+        const q = searchInput.value.trim();
+        if (q.length < 2) {
+            resultsDiv.innerHTML = '';
+            return;
+        }
+        try {
+            const resp = await fetch(`/portal/{{ tenant.schema_name }}/api/student-search/?q=${encodeURIComponent(q)}`);
+            const data = await resp.json();
+            if (data.length === 0) {
+                resultsDiv.innerHTML = '<div class="result-item">No students found</div>';
+                return;
+            }
+            let html = '';
+            data.forEach(s => {
+                html += `
+                    <div class="result-item" data-id="${s.id}">
+                        <div>
+                            <div class="result-name">${s.name}</div>
+                            <div class="result-roll">${s.roll_no} | ${s.grade}</div>
+                        </div>
+                        <div class="result-select">Select →</div>
+                    </div>
+                `;
+            });
+            resultsDiv.innerHTML = html;
+            document.querySelectorAll('.result-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const studentId = el.dataset.id;
+                    window.location.href = `{% url 'fee_collection' schema_name=tenant.schema_name %}?student_id=${studentId}`;
+                });
+            });
+        } catch(e) {
+            console.error(e);
+        }
+    }, 300);
+
+    searchInput.addEventListener('input', searchStudents);
+</script>
 {% endblock %}
