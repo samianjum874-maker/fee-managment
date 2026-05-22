@@ -9,6 +9,7 @@ from .models import SchoolClient
 from .views import dashboard, student_list, student_profile, fee_collection, fee_receipt
 from .views import defaulters, reports, settings, fee_structure, fee_settings, family_payment
 from .views import student_search_api, add_student, edit_student, fee_status_api, manual_generate_api, manual_generate_single_api
+from .views import student_fee_records_api, student_payments_api
 
 def saas_homepage(request):
     return HttpResponse('''
@@ -56,6 +57,8 @@ family_payment_view = login_required_for_schema(family_payment)
 student_search_api_view = login_required_for_schema(student_search_api)
 add_student_view = login_required_for_schema(add_student)
 edit_student_view = login_required_for_schema(edit_student)
+student_fee_records_api_view = login_required_for_schema(student_fee_records_api)
+student_payments_api_view = login_required_for_schema(student_payments_api)
 
 urlpatterns = [
     path('', saas_homepage),
@@ -88,6 +91,8 @@ urlpatterns = [
     path('portal/<slug:schema_name>/fee/settings/', fee_settings_view, name='fee_settings'),
     path('portal/<slug:schema_name>/fee/family-payment/', family_payment_view, name='family_payment'),
     path('portal/<slug:schema_name>/api/student-search/', student_search_api_view, name='student_search_api'),
+    path('portal/<slug:schema_name>/api/student/<int:student_id>/fee-records/', student_fee_records_api_view, name='student_fee_records_api'),
+    path('portal/<slug:schema_name>/api/student/<int:student_id>/payments/', student_payments_api_view, name='student_payments_api'),
 ]
 
 if django_settings.DEBUG:

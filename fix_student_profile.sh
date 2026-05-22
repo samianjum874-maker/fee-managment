@@ -1,3 +1,31 @@
+#!/bin/bash
+
+echo "🔧 Applying student profile fix..."
+
+# ----------------------------------------------------------------------
+# 1. Add missing API routes to public_urls.py (if not already present)
+# ----------------------------------------------------------------------
+if ! grep -q "student_fee_records_api" axis_saas/public_urls.py; then
+    echo "➜ Adding API routes to public_urls.py"
+
+    # Insert the two new path() lines after the line containing 'student_search_api_view'
+    # Using a here-document with sed for safe insertion
+    sed -i '/student_search_api_view/a\
+    path(\"portal/<slug:schema_name>/api/student/<int:student_id>/fee-records/\", student_fee_records_api, name=\"student_fee_records_api\"),\
+    path(\"portal/<slug:schema_name>/api/student/<int:student_id>/payments/\", student_payments_api, name=\"student_payments_api\"),' axis_saas/public_urls.py
+
+    # Also ensure the view functions are imported
+    sed -i '/from .views import/ s/$/, student_fee_records_api, student_payments_api/' axis_saas/public_urls.py
+
+    echo "✓ API routes added"
+else
+    echo "✓ API routes already present"
+fi
+
+# ----------------------------------------------------------------------
+# 2. Overwrite student_profile.html with dynamic version
+# ----------------------------------------------------------------------
+cat > templates/tenant/student_profile.html << 'HTML'
 {% extends 'tenant/base.html' %}
 {% block title %}{{ student.name }} | Profile{% endblock %}
 {% block body %}
@@ -36,7 +64,7 @@
     <div class="table-responsive">
         <table class="data-table" id="feeTable">
             <thead><tr><th>Month/Year</th><th>Amount</th><th>Paid</th><th>Status</th><th>Receipt</th></tr></thead>
-            <tbody id="feeTableBody"><tr><td colspan="5" class="loading-row">Loading...</td></tr></tbody>
+            <tbody id="feeTableBody"><td><td colspan="5" class="loading-row">Loading...</td></tr></tbody>
         </table>
     </div>
 </div>
@@ -45,7 +73,7 @@
     <h3 class="section-title">💳 Payment History</h3>
     <div class="table-responsive">
         <table class="data-table" id="paymentTable">
-            <thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Receipt</th></td></thead>
+            <thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Receipt</th></tr></thead>
             <tbody id="paymentTableBody"><tr><td colspan="4" class="loading-row">Loading...</td></tr></tbody>
         </table>
     </div>
@@ -123,7 +151,7 @@ async function loadFeeRecords() {
             totalPaid += r.paid_amount;
             let receiptsHtml = '';
             if (r.receipts && r.receipts.length) {
-                receiptsHtml = r.receipts.map(rc => `<a href="/portal/${schema}/fee/receipt/${rc.id}/" class="receipt-link">${rc.number}</a>`).join(', ');
+                receiptsHtml = r.receipts.map(rc => `<a href="/portal/${schema}/fee/receipt/${rc}/" class="receipt-link">${rc}</a>`).join(', ');
             } else {
                 receiptsHtml = '—';
             }
@@ -203,3 +231,8 @@ loadFeeRecords();
 loadPayments();
 </script>
 {% endblock %}
+HTML
+
+echo "✅ Fix applied successfully!"
+echo "🔁 Restart your Django server and clear browser cache."
+echo "📌 Now the student profile will dynamically load fee and payment data via the new APIs."

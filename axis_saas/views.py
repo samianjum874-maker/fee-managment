@@ -624,3 +624,44 @@ def edit_student(request, schema_name, student_id):
             'logo_url': tenant.school_logo.url if tenant.school_logo else None,
         }
     return render(request, 'tenant/student_form.html', context)
+
+# ------------------- API: Student Fee Records (JSON) -------------------
+def student_fee_records_api(request, schema_name, student_id):
+    """Return fee records for a student as JSON."""
+    from django.http import JsonResponse
+    from .models import Student, FeeRecord
+    tenant = get_tenant(request, schema_name)
+    with schema_context(schema_name):
+        student = get_object_or_404(Student, id=student_id)
+        records = student.fee_records.all().order_by('-year', '-month')
+        data = [{
+            'id': r.id,
+            'month': r.month,
+            'year': r.year,
+            'amount': float(r.amount),
+            'paid_amount': float(r.paid_amount),
+            'remaining': float(r.remaining),
+            'status': r.get_status_display(),
+            'due_date': r.due_date.strftime('%Y-%m-%d'),
+            'receipts': [{"id": p.id, "number": p.receipt_number} for p in r.payments.all()]
+        } for r in records]
+        return JsonResponse(data, safe=False)
+
+# ------------------- API: Student Payment History (JSON) -------------------
+def student_payments_api(request, schema_name, student_id):
+    """Return payment transactions for a student as JSON."""
+    from django.http import JsonResponse
+    from .models import Student, PaymentTransaction
+    tenant = get_tenant(request, schema_name)
+    with schema_context(schema_name):
+        student = get_object_or_404(Student, id=student_id)
+        payments = student.payments.all().order_by('-payment_date')
+        data = [{
+            'id': p.id,
+            'receipt_number': p.receipt_number,
+            'amount': float(p.amount),
+            'date': p.payment_date.strftime('%Y-%m-%d'),
+            'mode': p.get_payment_mode_display(),
+            'url': f'/portal/{schema_name}/fee/receipt/{p.id}/'
+        } for p in payments]
+        return JsonResponse(data, safe=False)
