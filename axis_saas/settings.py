@@ -37,6 +37,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'axis_saas.context_processors.tenant_processor',   # ✅ ADD THIS LINE
             ],
         },
     },
