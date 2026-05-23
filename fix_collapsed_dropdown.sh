@@ -1,3 +1,6 @@
+#!/bin/bash
+
+cat > templates/tenant/base.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -583,3 +586,11 @@
     </script>
 </body>
 </html>
+EOF
+
+echo "✅ base.html has been replaced with fixed dropdown version."
+echo "👉 Restart your Django server and hard refresh the browser (Ctrl+Shift+R)."
+echo "   The profile dropdown now opens:"
+echo "   - Above the button in expanded sidebar"
+echo "   - To the right of the button when sidebar is collapsed"
+EOF

@@ -1,3 +1,6 @@
+#!/bin/bash
+
+cat > templates/tenant/base.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -259,6 +262,16 @@
         /* COLLAPSED SIDEBAR: dropdown opens outside to the right */
         .sidebar.collapsed .profile-dropdown {
             position: static;
+        }
+        .sidebar.collapsed .dropdown-menu {
+            position: fixed !important;
+            top: auto !important;
+            left: auto !important;
+            bottom: auto !important;
+            right: auto !important;
+            margin: 0;
+            min-width: 200px;
+            transform: none !important;
         }
         .sidebar.collapsed .profile-name,
         .sidebar.collapsed .dropdown-arrow {
@@ -583,3 +596,11 @@
     </script>
 </body>
 </html>
+EOF
+
+echo "✅ base.html has been replaced with fixed dropdown version."
+echo "👉 Restart your Django server and hard refresh the browser (Ctrl+Shift+R)."
+echo "   The profile dropdown now opens:"
+echo "   - Above the button in expanded sidebar"
+echo "   - To the right of the button when sidebar is collapsed"
+EOF
