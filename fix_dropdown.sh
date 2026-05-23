@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# Fix profile dropdown in sidebar - open upward and outside when collapsed
+cat > templates/tenant/base.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -588,3 +592,7 @@
     </script>
 </body>
 </html>
+EOF
+
+echo "✅ base.html has been replaced with fixed dropdown version."
+echo "Restart your Django server (or refresh) to see changes."
