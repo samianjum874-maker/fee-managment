@@ -1060,77 +1060,30 @@ def gym_payment(request, schema_name, customer_id=None):
     return render(request, 'tenant/gym_payment.html', context)
 
 def gym_reports(request, schema_name):
+    """Main reports page – loads initial context, then JS fetches data via APIs."""
     tenant = get_tenant(request, schema_name)
-    from .models import GymCustomer, GymPayment, GymSubscription, GymAttendance
-    from django.db.models import Sum, Count
-    from datetime import date, timedelta
-    today = timezone.localdate()
-    report_type = request.GET.get('type', 'revenue')
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-    quick_filter = request.GET.get('quick_filter')
+    from .models import GymCustomer, GymPayment, GymAttendance, GymSubscription
     with schema_context(schema_name):
-        if quick_filter == 'today':
-            start_date = end_date = today
-        elif quick_filter == 'week':
-            start_date = today - timedelta(days=today.weekday())
-            end_date = start_date + timedelta(days=6)
-        elif quick_filter == 'month':
-            start_date = today.replace(day=1)
-            end_date = today
-        elif quick_filter == 'year':
-            start_date = today.replace(month=1, day=1)
-            end_date = today
-        elif quick_filter == 'all':
-            start_date = date(2000,1,1)
-            end_date = today
-        elif quick_filter == 'last6months':
-            start_date = today - timedelta(days=180)
-            end_date = today
-        elif start_date and end_date:
-            start_date = date.fromisoformat(start_date)
-            end_date = date.fromisoformat(end_date)
-        else:
-            start_date = date(2000,1,1)
-            end_date = today
-
-        if report_type == 'revenue':
-            payments = GymPayment.objects.filter(payment_date__gte=start_date, payment_date__lte=end_date)
-            total_revenue = payments.aggregate(Sum('amount'))['amount__sum'] or 0
-            payment_count = payments.count()
-            months_labels = []
-            months_amounts = []
-            for i in range(5,-1,-1):
-                m = today.month - i
-                y = today.year
-                if m <= 0:
-                    m += 12
-                    y -= 1
-                total = GymPayment.objects.filter(payment_date__year=y, payment_date__month=m).aggregate(Sum('amount'))['amount__sum'] or 0
-                months_labels.append(f"{m}/{y}")
-                months_amounts.append(float(total))
-            context = {
-                'tenant': tenant, 'report_type': 'revenue', 'total_revenue': total_revenue, 'payment_count': payment_count,
-                'months_labels': months_labels, 'months_amounts': months_amounts,
-                'start_date': start_date, 'end_date': end_date, 'quick_filter': quick_filter,
-                'logo_url': tenant.school_logo.url if tenant.school_logo else None,
-            }
-        else:
-            attendances = GymAttendance.objects.filter(date__gte=start_date, date__lte=end_date)
-            total_checkins = attendances.count()
-            unique_customers = attendances.values('customer').distinct().count()
-            from collections import defaultdict
-            daily = defaultdict(int)
-            for a in attendances:
-                daily[a.date] += 1
-            days = sorted(daily.keys())
-            checkin_counts = [daily[d] for d in days]
-            context = {
-                'tenant': tenant, 'report_type': 'attendance', 'total_checkins': total_checkins,
-                'unique_customers': unique_customers, 'days': days, 'checkin_counts': checkin_counts,
-                'start_date': start_date, 'end_date': end_date, 'quick_filter': quick_filter,
-                'logo_url': tenant.school_logo.url if tenant.school_logo else None,
-            }
+        total_revenue_all = GymPayment.objects.aggregate(Sum('amount'))['amount__sum'] or 0
+        total_checkins_all = GymAttendance.objects.count()
+        active_customers = GymCustomer.objects.filter(status='active').count()
+        total_customers = GymCustomer.objects.count()
+        active_subs = GymSubscription.objects.filter(status='paid').count()
+        expiring_soon = GymCustomer.objects.filter(
+            status='active',
+            membership_end__gte=timezone.localdate(),
+            membership_end__lte=timezone.localdate() + timedelta(days=7)
+        ).count()
+        context = {
+            'tenant': tenant,
+            'logo_url': tenant.school_logo.url if tenant.school_logo else None,
+            'total_revenue_all': total_revenue_all,
+            'total_checkins_all': total_checkins_all,
+            'active_customers': active_customers,
+            'total_customers': total_customers,
+            'active_subs': active_subs,
+            'expiring_soon': expiring_soon,
+        }
     return render(request, 'tenant/gym_reports.html', context)
 
 def gym_settings(request, schema_name):
@@ -1365,3 +1318,267 @@ def gym_checkout_api(request):
         attendance.check_out = timezone.now()
         attendance.save()
         return JsonResponse({"message": f"Check-out recorded for {customer.name}"})
+
+# ==================== GYM REPORTS (MEGA VERSION) ====================
+import json
+from datetime import datetime, timedelta
+from django.db.models import Count, Sum, Q
+from django.db.models.functions import TruncMonth, TruncDay
+from collections import defaultdict
+
+def gym_reports(request, schema_name):
+    """Main reports page – loads initial context, then JS fetches data via APIs."""
+    tenant = get_tenant(request, schema_name)
+    from .models import GymCustomer, GymPayment, GymAttendance, GymSubscription
+    with schema_context(schema_name):
+        # Initial KPI totals (all time)
+        total_revenue_all = GymPayment.objects.aggregate(Sum('amount'))['amount__sum'] or 0
+        total_checkins_all = GymAttendance.objects.count()
+        active_customers = GymCustomer.objects.filter(status='active').count()
+        total_customers = GymCustomer.objects.count()
+        # Active subscriptions count
+        active_subs = GymSubscription.objects.filter(status='paid').count()
+        expiring_soon = GymCustomer.objects.filter(
+            status='active',
+            membership_end__gte=timezone.localdate(),
+            membership_end__lte=timezone.localdate() + timedelta(days=7)
+        ).count()
+        context = {
+            'tenant': tenant,
+            'logo_url': tenant.school_logo.url if tenant.school_logo else None,
+            'total_revenue_all': total_revenue_all,
+            'total_checkins_all': total_checkins_all,
+            'active_customers': active_customers,
+            'total_customers': total_customers,
+            'active_subs': active_subs,
+            'expiring_soon': expiring_soon,
+        }
+    return render(request, 'tenant/gym_reports.html', context)
+
+@csrf_exempt
+def gym_revenue_stats_api(request, schema_name):
+    """API: revenue stats for given date range and grouping (day/month)."""
+    if not request.session.get('school_admin_authenticated'):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    tenant = get_tenant(request, schema_name)
+    start_str = request.GET.get('start')
+    end_str = request.GET.get('end')
+    group_by = request.GET.get('group_by', 'month')  # day or month
+    try:
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').date() if start_str else None
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').date() if end_str else None
+    except:
+        return JsonResponse({'error': 'Invalid date format'}, status=400)
+    
+    with schema_context(schema_name):
+        from .models import GymPayment
+        qs = GymPayment.objects.all()
+        if start_date:
+            qs = qs.filter(payment_date__gte=start_date)
+        if end_date:
+            qs = qs.filter(payment_date__lte=end_date)
+        
+        if group_by == 'day':
+            data = qs.annotate(day=TruncDay('payment_date')).values('day').annotate(total=Sum('amount')).order_by('day')
+            labels = [d['day'].strftime('%Y-%m-%d') for d in data]
+            amounts = [float(d['total']) for d in data]
+        else:
+            data = qs.annotate(month=TruncMonth('payment_date')).values('month').annotate(total=Sum('amount')).order_by('month')
+            labels = [d['month'].strftime('%b %Y') for d in data]
+            amounts = [float(d['total']) for d in data]
+        
+        # Payment mode distribution
+        mode_totals = {}
+        for mode_code, mode_name in GymPayment.PAYMENT_MODE_CHOICES:
+            total = qs.filter(payment_mode=mode_code).aggregate(Sum('amount'))['amount__sum'] or 0
+            if total > 0:
+                mode_totals[mode_name] = float(total)
+        mode_distribution = [{'name': k, 'amount': v} for k, v in mode_totals.items()]
+        
+        # Top spenders (customers with highest total payments in range)
+        top_spenders = qs.values('customer__id', 'customer__name', 'customer__phone').annotate(total=Sum('amount')).order_by('-total')[:5]
+        top_spenders_list = [{'id': c['customer__id'], 'name': c['customer__name'], 'phone': c['customer__phone'], 'total': float(c['total'])} for c in top_spenders]
+        
+        return JsonResponse({
+            'labels': labels,
+            'amounts': amounts,
+            'mode_distribution': mode_distribution,
+            'top_spenders': top_spenders_list,
+            'total_revenue': float(qs.aggregate(Sum('amount'))['amount__sum'] or 0),
+            'transaction_count': qs.count()
+        })
+
+@csrf_exempt
+def gym_attendance_stats_api(request, schema_name):
+    """API: attendance stats for date range."""
+    if not request.session.get('school_admin_authenticated'):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    tenant = get_tenant(request, schema_name)
+    start_str = request.GET.get('start')
+    end_str = request.GET.get('end')
+    try:
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').date() if start_str else None
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').date() if end_str else None
+    except:
+        return JsonResponse({'error': 'Invalid date format'}, status=400)
+    
+    with schema_context(schema_name):
+        from .models import GymAttendance
+        qs = GymAttendance.objects.all()
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+        
+        # Daily check-ins
+        daily = qs.values('date').annotate(count=Count('id')).order_by('date')
+        labels = [d['date'].strftime('%Y-%m-%d') for d in daily]
+        counts = [d['count'] for d in daily]
+        
+        # Check-in hour distribution
+        hour_dist = defaultdict(int)
+        for att in qs:
+            hour_dist[att.check_in.hour] += 1
+        hours = sorted(hour_dist.keys())
+        hour_counts = [hour_dist[h] for h in hours]
+        
+        # Unique customers
+        unique_customers = qs.values('customer').distinct().count()
+        
+        # Average per day
+        if daily:
+            avg_per_day = sum(counts) / len(daily)
+        else:
+            avg_per_day = 0
+        
+        return JsonResponse({
+            'labels': labels,
+            'counts': counts,
+            'hour_labels': hours,
+            'hour_counts': hour_counts,
+            'total_checkins': qs.count(),
+            'unique_customers': unique_customers,
+            'avg_per_day': round(avg_per_day, 1)
+        })
+
+@csrf_exempt
+def gym_customers_list_api(request, schema_name):
+    """API: list of all customers with basic stats (total paid, pending, attendance count)."""
+    if not request.session.get('school_admin_authenticated'):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    tenant = get_tenant(request, schema_name)
+    search = request.GET.get('search', '')
+    status_filter = request.GET.get('status', '')
+    
+    with schema_context(schema_name):
+        from .models import GymCustomer, GymPayment, GymSubscription, GymAttendance
+        customers = GymCustomer.objects.all()
+        if search:
+            customers = customers.filter(Q(name__icontains=search) | Q(phone__icontains=search))
+        if status_filter:
+            customers = customers.filter(status=status_filter)
+        
+        data = []
+        for c in customers:
+            total_paid = c.payments.aggregate(Sum('amount'))['amount__sum'] or 0
+            pending = sum(s.remaining for s in c.subscriptions.filter(status__in=['pending','partial','overdue']))
+            attendance_count = c.attendances.count()
+            data.append({
+                'id': c.id,
+                'name': c.name,
+                'phone': c.phone,
+                'status': c.status,
+                'membership_end': c.membership_end.strftime('%Y-%m-%d') if c.membership_end else None,
+                'total_paid': float(total_paid),
+                'pending': float(pending),
+                'attendance_count': attendance_count
+            })
+        return JsonResponse(data, safe=False)
+
+@csrf_exempt
+def gym_customer_detail_api(request, schema_name, customer_id):
+    """API: detailed info for a single customer (payments, subscriptions, attendance)."""
+    if not request.session.get('school_admin_authenticated'):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    tenant = get_tenant(request, schema_name)
+    with schema_context(schema_name):
+        from .models import GymCustomer, GymPayment, GymSubscription, GymAttendance
+        customer = get_object_or_404(GymCustomer, id=customer_id)
+        # Payments
+        payments = customer.payments.all().order_by('-payment_date')
+        payments_data = [{
+            'receipt': p.receipt_number,
+            'amount': float(p.amount),
+            'date': p.payment_date.strftime('%Y-%m-%d'),
+            'mode': p.get_payment_mode_display()
+        } for p in payments]
+        # Subscriptions
+        subs = customer.subscriptions.all().order_by('-year', '-month')
+        subs_data = [{
+            'month': f"{s.month}/{s.year}",
+            'amount': float(s.amount),
+            'paid': float(s.paid_amount),
+            'status': s.get_status_display(),
+            'cancelled': s.is_cancelled
+        } for s in subs]
+        # Attendance
+        attendances = customer.attendances.all().order_by('-date')
+        attendance_data = [{
+            'date': a.date.strftime('%Y-%m-%d'),
+            'check_in': a.check_in.strftime('%H:%M'),
+            'check_out': a.check_out.strftime('%H:%M') if a.check_out else None
+        } for a in attendances]
+        
+        total_paid = sum(p.amount for p in payments)
+        pending = sum(s.remaining for s in subs if s.status in ['pending','partial','overdue'])
+        
+        return JsonResponse({
+            'id': customer.id,
+            'name': customer.name,
+            'phone': customer.phone,
+            'email': customer.email,
+            'status': customer.status,
+            'membership_start': customer.membership_start.strftime('%Y-%m-%d'),
+            'membership_end': customer.membership_end.strftime('%Y-%m-%d') if customer.membership_end else None,
+            'monthly_fee': float(customer.monthly_fee),
+            'total_paid': float(total_paid),
+            'pending': float(pending),
+            'payments': payments_data,
+            'subscriptions': subs_data,
+            'attendances': attendance_data
+        })
+
+@csrf_exempt
+def gym_subscription_status_api(request, schema_name):
+    """API: subscription status summary and list."""
+    if not request.session.get('school_admin_authenticated'):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    tenant = get_tenant(request, schema_name)
+    with schema_context(schema_name):
+        from .models import GymSubscription, GymCustomer
+        today = timezone.localdate()
+        # Active subscriptions (paid for current month)
+        active_subs = GymSubscription.objects.filter(
+            month=today.month, year=today.year, status='paid'
+        ).select_related('customer')
+        # Expiring soon (customers whose membership ends within 7 days)
+        expiring_customers = GymCustomer.objects.filter(
+            status='active',
+            membership_end__gte=today,
+            membership_end__lte=today + timedelta(days=7)
+        )
+        # Expired customers
+        expired_customers = GymCustomer.objects.filter(status='expired')
+        
+        active_list = [{'customer': sub.customer.name, 'amount': float(sub.amount)} for sub in active_subs]
+        expiring_list = [{'name': c.name, 'phone': c.phone, 'end_date': c.membership_end.strftime('%Y-%m-%d')} for c in expiring_customers]
+        expired_list = [{'name': c.name, 'phone': c.phone, 'end_date': c.membership_end.strftime('%Y-%m-%d') if c.membership_end else ''} for c in expired_customers]
+        
+        return JsonResponse({
+            'active_count': active_subs.count(),
+            'expiring_count': expiring_customers.count(),
+            'expired_count': expired_customers.count(),
+            'active_subscriptions': active_list,
+            'expiring_soon': expiring_list,
+            'expired_customers': expired_list
+        })
