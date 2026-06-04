@@ -1,133 +1,116 @@
 #!/usr/bin/env python3
 """
-Patcher for gym_generate_subscription view - fixes UnboundLocalError: due_date
+Final patcher to:
+- Disable auto gym subscription generation (commands do nothing)
+- Remove auto settings fields from Gym Settings page
+- Keep manual generation fully functional
+- Leave school side unchanged
 """
 
 import re
-import os
 import shutil
 from pathlib import Path
 
-VIEWS_FILE = Path("axis_saas/views.py")
-BACKUP_SUFFIX = ".bak_gym_fix"
+PROJECT_ROOT = Path("/home/sami/axis_school_sys")
 
-def patch_views():
-    if not VIEWS_FILE.exists():
-        print(f"❌ {VIEWS_FILE} not found. Run this script from the project root.")
+# Files to patch
+COMMAND_FILES = [
+    "axis_saas/management/commands/generate_gym_subscriptions.py",
+    "axis_saas/management/commands/generate_daily_subscriptions.py",
+]
+FORMS_FILE = "axis_saas/forms.py"
+TEMPLATE_FILE = "templates/tenant/gym_settings.html"
+
+def backup_and_patch(filepath, patcher_func):
+    full_path = PROJECT_ROOT / filepath
+    if not full_path.exists():
+        print(f"⚠️ File not found, skipping: {filepath}")
         return False
 
     # Backup
-    backup_path = VIEWS_FILE.with_suffix(VIEWS_FILE.suffix + BACKUP_SUFFIX)
-    shutil.copy2(VIEWS_FILE, backup_path)
-    print(f"✅ Backup created: {backup_path}")
+    backup = full_path.with_suffix(full_path.suffix + ".final_backup")
+    shutil.copy2(full_path, backup)
+    print(f"✅ Backup: {backup}")
 
-    with open(VIEWS_FILE, "r", encoding="utf-8") as f:
+    with open(full_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Locate the function definition
-    func_pattern = r'(def gym_generate_subscription\(request, schema_name, customer_id\):.*?)(?=\n\ndef |\n@|$)'
-    match = re.search(func_pattern, content, re.DOTALL)
-    if not match:
-        print("❌ Could not find gym_generate_subscription function.")
+    new_content = patcher_func(content)
+    if new_content == content:
+        print(f"ℹ️ No changes needed in {filepath}")
         return False
 
-    old_func = match.group(1)
-
-    # The fixed code – we'll replace the whole function
-    # I will write a corrected version by modifying the problematic part.
-    # The key change: compute due_date BEFORE checking existing, so it's always available.
-    fixed_func = """def gym_generate_subscription(request, schema_name, customer_id):
-    \"\"\"Generate a new subscription for a gym customer (multi-month).\"\"\"
-    from django.http import JsonResponse
-    from django.utils import timezone
-    from decimal import Decimal
-    from .models import GymCustomer, GymSubscription, GymSettings
-    from datetime import date, timedelta
-    from calendar import monthrange
-    import json
-    from django_tenants.utils import schema_context
-    with schema_context(schema_name):
-        try:
-            customer = GymCustomer.objects.get(id=customer_id)
-        except GymCustomer.DoesNotExist:
-            return JsonResponse({'error': 'Customer not found'}, status=404)
-
-        if request.method != 'POST':
-            return JsonResponse({'error': 'Only POST allowed'}, status=405)
-
-        try:
-            data = json.loads(request.body)
-            months = int(data.get('months', 1))
-            monthly_fee = Decimal(str(data.get('fee', customer.monthly_fee)))
-        except (ValueError, TypeError, json.JSONDecodeError):
-            return JsonResponse({'error': 'Invalid data. Provide months and fee.'}, status=400)
-
-        if months < 1 or months > 12:
-            return JsonResponse({'error': 'Months must be between 1 and 12'}, status=400)
-
-        today = date.today()
-        settings = GymSettings.objects.first()
-        if not settings:
-            settings = GymSettings.objects.create()
-        due_offset = settings.due_date_offset
-
-        created = []
-
-        for i in range(months):
-            target_month = today.month + i
-            target_year = today.year
-            while target_month > 12:
-                target_month -= 12
-                target_year += 1
-
-            # ✅ Compute due_date for this target month BEFORE checking existence
-            due_day = customer.membership_start.day if customer.membership_start else 1
-            max_day = monthrange(target_year, target_month)[1]
-            due_day = min(due_day, max_day)
-            due_date = date(target_year, target_month, due_day) + timedelta(days=due_offset)
-
-            existing = GymSubscription.objects.filter(customer=customer, month=target_month, year=target_year).first()
-            if existing:
-                if existing.is_cancelled:
-                    # Reactivate cancelled subscription with new parameters
-                    existing.amount = monthly_fee
-                    existing.paid_amount = Decimal('0')
-                    existing.due_date = due_date          # ✅ now due_date is defined
-                    existing.status = 'pending'
-                    existing.is_cancelled = False
-                    existing.cancelled_on = None
-                    existing.save()
-                    created.append(existing)
-                else:
-                    # Already have a valid subscription for this month
-                    continue
-            else:
-                # No subscription → create new one
-                sub = GymSubscription.objects.create(
-                    customer=customer,
-                    month=target_month,
-                    year=target_year,
-                    amount=monthly_fee,
-                    due_date=due_date,
-                    status='pending'
-                )
-                created.append(sub)
-
-        if created:
-            return JsonResponse({'message': f'Generated {len(created)} subscription(s).'})
-        else:
-            return JsonResponse({'message': 'No new subscriptions created (already exist).'})
-"""
-    # Replace the old function with the fixed version
-    new_content = content.replace(old_func, fixed_func)
-
-    # Write back
-    with open(VIEWS_FILE, "w", encoding="utf-8") as f:
+    with open(full_path, "w", encoding="utf-8") as f:
         f.write(new_content)
-
-    print("✅ Fixed gym_generate_subscription function.")
-    print("   Restart your Django server to apply changes.")
+    print(f"🔧 Patched: {filepath}")
     return True
 
+# ------------------- 1. Disable auto commands -------------------
+def disable_command(content):
+    # Replace the handle method with a no-op that prints a clear message
+    pattern = r'(def handle\(self, .*?\):.*?)(?=\n    def |\nclass |\Z)'
+    def replace(match):
+        indent = "    "
+        return f'''{match.group(1)}
+{indent}self.stdout.write(self.style.WARNING("⚠️ Auto subscription generation has been DISABLED by administrator."))
+{indent}self.stdout.write("   Subscriptions will NOT be created automatically.")
+{indent}self.stdout.write("   Please generate subscriptions manually from the customer profile.")
+{indent}return'''
+    return re.sub(pattern, replace, content, flags=re.DOTALL)
+
+# ------------------- 2. Remove fields from GymSettingsForm -------------------
+def patch_forms(content):
+    # Remove subscription_generation_day, due_date_offset, late_fee_penalty from fields list
+    # Find the GymSettingsForm class
+    form_pattern = r'(class GymSettingsForm\(forms\.ModelForm\):.*?)(?=\nclass |\Z)'
+    def replace_form(match):
+        form_body = match.group(1)
+        # Remove the three fields from the Meta.fields list
+        # First, locate the Meta class and its fields list
+        meta_pattern = r'(class Meta:.*?fields\s*=\s*\[.*?\])'
+        def replace_meta(m):
+            meta_content = m.group(0)
+            # Remove the unwanted field names
+            for field in ['subscription_generation_day', 'due_date_offset', 'late_fee_penalty']:
+                # Remove field from list, handling commas
+                meta_content = re.sub(rf"['\"]{field}['\"]\s*,?\s*", "", meta_content)
+            return meta_content
+        form_body = re.sub(meta_pattern, replace_meta, form_body, flags=re.DOTALL)
+        return form_body
+    return re.sub(form_pattern, replace_form, content, flags=re.DOTALL)
+
+# ------------------- 3. Remove fields from gym_settings.html template -------------------
+def patch_template(content):
+    # Remove the entire form-field divs for the auto fields
+    patterns = [
+        r'<div class="form-field">\s*<label>Subscription Generation Day</label>.*?</div>\s*',
+        r'<div class="form-field">\s*<label>Due Date Offset \(days after generation\)</label>.*?</div>\s*',
+        r'<div class="form-field">\s*<label>Late Fee Penalty \(%\)</label>.*?</div>\s*',
+    ]
+    for pat in patterns:
+        content = re.sub(pat, '', content, flags=re.DOTALL)
+    # Also remove the small text that may appear inside those fields
+    content = re.sub(r'<small>Day of month when subscriptions are auto-generated</small>', '', content)
+    return content
+
+def main():
+    print("🚀 Final Gym Auto-Disable & Settings Cleanup\n")
+
+    # 1. Disable commands
+    for cmd in COMMAND_FILES:
+        backup_and_patch(cmd, disable_command)
+
+    # 2. Patch forms.py
+    backup_and_patch(FORMS_FILE, patch_forms)
+
+    # 3. Patch template
+    backup_and_patch(TEMPLATE_FILE, patch_template)
+
+    print("\n✅ All changes applied successfully.")
+    print("📌 Restart your Django server: python3 manage.py runserver")
+    print("📌 Gym Settings page now shows only 'Default Monthly Fee'.")
+    print("📌 Auto subscription generation is completely disabled.")
+    print("📌 Manual generation from customer profile still works.")
+
 if __name__ == "__main__":
-    patch_views()
+    main()

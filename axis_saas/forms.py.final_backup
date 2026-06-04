@@ -82,7 +82,7 @@ class GymSettingsForm(forms.ModelForm):
     class Meta:
         from .models import GymSettings
         model = GymSettings
-        fields = ['default_monthly_fee', ]
+        fields = ['default_monthly_fee', 'subscription_generation_day', 'due_date_offset', 'late_fee_penalty']
         widgets = {
             'default_monthly_fee': forms.NumberInput(attrs={'step': '0.01'}),
             'subscription_generation_day': forms.NumberInput(attrs={'min': 1, 'max': 31}),

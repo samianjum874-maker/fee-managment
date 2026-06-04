@@ -40,7 +40,3 @@ class Command(BaseCommand):
     self.stdout.write(self.style.WARNING("⚠️ Auto-generation is DISABLED by administrator. Subscriptions will NOT be created automatically."))
     self.stdout.write("   Please create subscriptions manually from customer profile.")
     return
-    self.stdout.write(self.style.WARNING("⚠️ Auto subscription generation has been DISABLED by administrator."))
-    self.stdout.write("   Subscriptions will NOT be created automatically.")
-    self.stdout.write("   Please generate subscriptions manually from the customer profile.")
-    return
