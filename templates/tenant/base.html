@@ -388,8 +388,12 @@
             font-weight: 600;
         }
     
-    @media all and (display-mode: standalone) {
-        #pwaInstallContainer { display: none !important; }
+    
+@media all and (display-mode: standalone) {
+    #pwaInstallContainer { display: none !important; }
+    #installAppSidebarBtn { display: none !important; }
+}
+
     }
     </style>
     {% block extra_head %}{% endblock %}
@@ -427,8 +431,12 @@
             background: var(--primary);
         }
     
-    @media all and (display-mode: standalone) {
-        #pwaInstallContainer { display: none !important; }
+    
+@media all and (display-mode: standalone) {
+    #pwaInstallContainer { display: none !important; }
+    #installAppSidebarBtn { display: none !important; }
+}
+
     }
     </style>
     <link rel="manifest" href="/portal/{{ tenant.schema_name }}/manifest.json">
@@ -550,7 +558,15 @@
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
                             <span>Logout</span>
                         </a>
-                    </div>
+                    
+                <!-- PWA Install Button (Sidebar) -->
+                <button id="installAppSidebarBtn" class="nav-item" style="display: none; width: 100%; background: none; border: none; text-align: left; cursor: pointer;">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m-4-4l4 4 4-4"/>
+                    </svg>
+                    <span>Install App</span>
+                </button>
+</div>
                 </div>
             </div>
         </aside>
@@ -751,6 +767,27 @@ if ('serviceWorker' in navigator) {
         installBtn.addEventListener('click', async () => {
             if (deferredPrompt) {
                 deferredPrompt.prompt();
+
+
+        // Sidebar install button
+        const sidebarInstallBtn = document.getElementById('installAppSidebarBtn');
+        if (sidebarInstallBtn) {
+            sidebarInstallBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const result = await deferredPrompt.userChoice;
+                    if (result.outcome === 'accepted') {
+                        console.log('User accepted the install prompt (sidebar)');
+                        installContainer.style.display = 'none';
+                        sidebarInstallBtn.style.display = 'none';
+                    } else {
+                        console.log('User dismissed the install prompt (sidebar)');
+                    }
+                    deferredPrompt = null;
+                }
+            });
+        }
+
                 const result = await deferredPrompt.userChoice;
                 if (result.outcome === 'accepted') {
                     console.log('User accepted the install prompt');

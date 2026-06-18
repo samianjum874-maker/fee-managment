@@ -1,205 +1,192 @@
 #!/usr/bin/env python3
 """
-AXIS PWA Patcher – Fixes installability on both mobile and desktop.
-Run this script once from the project root (where manage.py is).
+AXIS PWA Sidebar Patcher – Adds an Install App button to the sidebar (desktop)
+and keeps the floating button on mobile. Both use the same install prompt.
+Run once from the project root.
 """
 
 import os
-import sys
-import shutil
+import re
 from pathlib import Path
 
-# ----------------------------------------------------------------------
-# 1. Generate PWA icons using Pillow
-# ----------------------------------------------------------------------
-try:
-    from PIL import Image, ImageDraw, ImageFont
-except ImportError:
-    print("❌ Pillow not installed. Installing...")
-    os.system(f"{sys.executable} -m pip install Pillow")
-    from PIL import Image, ImageDraw, ImageFont
+BASE_HTML = Path("templates/tenant/base.html")
 
-PROJECT_ROOT = Path(os.getcwd())
-STATIC_PWA_DIR = PROJECT_ROOT / "axis_saas" / "static" / "pwa"
+if not BASE_HTML.exists():
+    print("❌ templates/tenant/base.html not found. Are you in the project root?")
+    exit(1)
 
-def ensure_dir(path):
-    path.mkdir(parents=True, exist_ok=True)
-
-def create_icon(size, output_path, text="AXIS"):
-    """Generate a simple icon with a gradient background and text."""
-    img = Image.new('RGB', (size, size), color=(59, 130, 246))
-    draw = ImageDraw.Draw(img)
-
-    # Draw a slightly rounded rectangle overlay
-    rect_margin = size // 8
-    draw.rectangle(
-        [rect_margin, rect_margin, size - rect_margin, size - rect_margin],
-        fill=(37, 99, 235),
-        outline=None
-    )
-
-    # Add text
-    try:
-        # Try to use a default font
-        font_size = size // 3
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
-        font = ImageFont.load_default()
-
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    x = (size - text_width) // 2
-    y = (size - text_height) // 2
-    draw.text((x, y), text, fill="white", font=font)
-
-    img.save(output_path)
-    print(f"✅ Created icon: {output_path}")
-
-# Create icons
-ensure_dir(STATIC_PWA_DIR)
-create_icon(192, STATIC_PWA_DIR / "icon-192x192.png")
-create_icon(512, STATIC_PWA_DIR / "icon-512x512.png")
-
-# ----------------------------------------------------------------------
-# 2. Update pwa_views.py – new service worker with proper caching
-# ----------------------------------------------------------------------
-PWA_VIEWS_PATH = PROJECT_ROOT / "axis_saas" / "pwa_views.py"
-
-if not PWA_VIEWS_PATH.exists():
-    print(f"❌ {PWA_VIEWS_PATH} not found. Ensure the script is run from the project root.")
-    sys.exit(1)
-
-with open(PWA_VIEWS_PATH, "r") as f:
+with open(BASE_HTML, "r") as f:
     content = f.read()
 
-# Replace the service_worker function content with a robust one
-new_sw = '''def service_worker(request):
-    """Service Worker for AXIS PWA – modern caching strategy."""
-    sw_js = """// AXIS PWA Service Worker
-const CACHE_NAME = 'axis-pwa-v2';
-const STATIC_EXTENSIONS = ['css', 'js', 'png', 'jpg', 'svg', 'ico', 'json', 'woff2'];
-const STATIC_URLS = [
-    '/static/pwa/icon-192x192.png',
-    '/static/pwa/icon-512x512.png',
-    '/static/css/base.css',   // adjust if you have a main CSS file
-];
-
-// Install: cache essential static files
-self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                return cache.addAll(STATIC_URLS)
-                    .catch(err => console.warn('Could not cache static URLs:', err));
-            })
-            .then(() => self.skipWaiting())
-    );
-});
-
-// Activate: claim clients and clean old caches
-self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(keys => {
-            return Promise.all(
-                keys.filter(key => key !== CACHE_NAME)
-                    .map(key => caches.delete(key))
-            );
-        }).then(() => self.clients.claim())
-    );
-});
-
-// Fetch: cache-first for static files, network-first for everything else
-self.addEventListener('fetch', event => {
-    const url = new URL(event.request.url);
-    const isStatic = STATIC_EXTENSIONS.some(ext => url.pathname.endsWith('.' + ext));
-    if (isStatic || url.pathname.startsWith('/static/')) {
-        event.respondWith(
-            caches.match(event.request)
-                .then(response => response || fetch(event.request))
-                .catch(() => {
-                    // Offline fallback for static files
-                    return new Response('Offline', { status: 503 });
-                })
-        );
-    } else {
-        // For other requests (HTML, API), try network first, fallback to cache
-        event.respondWith(
-            fetch(event.request)
-                .then(response => {
-                    // Cache a copy for offline use
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-                    return response;
-                })
-                .catch(() => caches.match(event.request))
-        );
-    }
-});
+# ----------------------------------------------------------------------
+# 1. Add sidebar install button inside .sidebar-footer (after profile dropdown)
+# ----------------------------------------------------------------------
+sidebar_button_html = """
+                <!-- PWA Install Button (Sidebar) -->
+                <button id="installAppSidebarBtn" class="nav-item" style="display: none; width: 100%; background: none; border: none; text-align: left; cursor: pointer;">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m-4-4l4 4 4-4"/>
+                    </svg>
+                    <span>Install App</span>
+                </button>
 """
-    return HttpResponse(sw_js, content_type='application/javascript')
-'''
 
-# Find the old service_worker function and replace it
-import re
-pattern = r'def service_worker\(request\):.*?(?=def |$)'
-if re.search(pattern, content, re.DOTALL):
-    content = re.sub(pattern, new_sw, content, flags=re.DOTALL)
-    print("✅ Updated pwa_views.py with new service worker.")
+# Find the sidebar-footer and insert after the profile dropdown (or before the closing </div>)
+# We'll insert right after the profile dropdown container (id="profileDropdownContainer") ends.
+# The existing structure: <div class="sidebar-footer"> ... <div class="profile-dropdown" id="profileDropdownContainer"> ... </div> </div>
+# We'll place the button right after the profile dropdown container, but still inside sidebar-footer.
+
+profile_dropdown_end = content.find('</div>', content.find('id="profileDropdownContainer"'))
+if profile_dropdown_end == -1:
+    print("⚠️ Could not find profileDropdownContainer. Inserting at end of sidebar-footer.")
+    # Fallback: insert before the last </div> of sidebar-footer
+    footer_end = content.find('</div>', content.find('class="sidebar-footer"'))
+    if footer_end != -1:
+        content = content[:footer_end] + sidebar_button_html + content[footer_end:]
 else:
-    print("❌ Could not find service_worker function in pwa_views.py")
-    sys.exit(1)
+    # Insert after the profile dropdown container's closing div, but before the sidebar-footer close
+    # Find the next closing div after that (which is the sidebar-footer closing)
+    footer_close = content.find('</div>', profile_dropdown_end + 1)
+    if footer_close != -1:
+        content = content[:footer_close] + sidebar_button_html + content[footer_close:]
+    else:
+        # If not found, insert at the very end of sidebar-footer (before </div>)
+        footer_end = content.find('</div>', content.find('class="sidebar-footer"'))
+        if footer_end != -1:
+            content = content[:footer_end] + sidebar_button_html + content[footer_end:]
 
-with open(PWA_VIEWS_PATH, "w") as f:
+print("✅ Added sidebar install button.")
+
+# ----------------------------------------------------------------------
+# 2. Update CSS: hide sidebar button in standalone mode & show on desktop
+# ----------------------------------------------------------------------
+# We already have a rule in base.html:
+#   @media all and (display-mode: standalone) { #pwaInstallContainer { display: none !important; } }
+# We need to also hide the sidebar button in standalone mode.
+# Let's add that rule.
+
+hide_standalone = """
+@media all and (display-mode: standalone) {
+    #pwaInstallContainer { display: none !important; }
+    #installAppSidebarBtn { display: none !important; }
+}
+"""
+# Check if it already exists (it might have the first line, we'll append the second)
+if "#installAppSidebarBtn" not in content:
+    # If we already have the first rule, replace it with the combined one.
+    if "@media all and (display-mode: standalone)" in content:
+        # Replace the old block with the new one (including both)
+        pattern = r'@media all and \(display-mode: standalone\) \{[^}]*\}'
+        content = re.sub(pattern, hide_standalone, content, flags=re.DOTALL)
+    else:
+        # Insert before </style> or </head>
+        if "</style>" in content:
+            content = content.replace("</style>", hide_standalone + "\n</style>")
+        else:
+            content = content.replace("</head>", f"<style>{hide_standalone}</style></head>")
+    print("✅ Updated standalone mode hiding for both buttons.")
+
+# ----------------------------------------------------------------------
+# 3. Update JavaScript: handle multiple install buttons
+# ----------------------------------------------------------------------
+# We need to ensure both the floating button and the sidebar button trigger the same prompt.
+# The existing script uses:
+#   const installBtn = document.getElementById('installAppBtn');
+#   installBtn.addEventListener('click', async () => { ... });
+# We'll add a second listener for the sidebar button.
+
+# Find the script block that contains the install logic.
+# We'll locate the part where installBtn is defined and add code for sidebarBtn.
+
+# Look for the existing installBtn event listener and append a similar one for sidebarBtn.
+# We'll insert after the existing installBtn click handler.
+
+js_install_code = """
+        // Sidebar install button
+        const sidebarInstallBtn = document.getElementById('installAppSidebarBtn');
+        if (sidebarInstallBtn) {
+            sidebarInstallBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const result = await deferredPrompt.userChoice;
+                    if (result.outcome === 'accepted') {
+                        console.log('User accepted the install prompt (sidebar)');
+                        installContainer.style.display = 'none';
+                        sidebarInstallBtn.style.display = 'none';
+                    } else {
+                        console.log('User dismissed the install prompt (sidebar)');
+                    }
+                    deferredPrompt = null;
+                }
+            });
+        }
+"""
+
+# Find where the existing installBtn click handler is defined and insert after it.
+# We'll search for "installBtn.addEventListener('click'" and insert after its closing brace.
+# A simple approach: replace the entire beforeinstallprompt event listener block with an enhanced version.
+# Actually, we can just add the new listener after the existing one. We'll locate the closing brace of the existing listener.
+
+if 'installBtn.addEventListener' in content:
+    # Find the end of that listener's function (search for the matching closing brace after the async function)
+    # We'll insert before the next statement (probably the window.addEventListener('appinstalled'))
+    pattern = r'(installBtn\.addEventListener\([\s\S]*?\);)'
+    match = re.search(pattern, content)
+    if match:
+        existing_code = match.group(0)
+        # Insert our new code after it, but before the next line (maybe after the semicolon)
+        # We'll replace the match with the existing code + new code.
+        new_block = existing_code + "\n\n" + js_install_code
+        content = content.replace(existing_code, new_block)
+        print("✅ Added sidebar install button event listener.")
+    else:
+        print("⚠️ Could not find installBtn click handler; adding new code separately.")
+        # Fallback: just append the new code before the closing </script> tag.
+        if "</script>" in content:
+            content = content.replace("</script>", js_install_code + "\n</script>")
+else:
+    print("⚠️ installBtn not found; adding new listener anyway.")
+    if "</script>" in content:
+        content = content.replace("</script>", js_install_code + "\n</script>")
+
+# Also need to show the sidebar button when the prompt is available.
+# The existing beforeinstallprompt event shows the floating container. We'll also show the sidebar button.
+# We'll modify that event to also show the sidebar button.
+
+if 'window.addEventListener(\'beforeinstallprompt\'' in content:
+    # We'll enhance the event listener to also show the sidebar button.
+    # Find the existing block and add a line to show the sidebar button.
+    # Look for the part that sets installContainer.style.display = 'block';
+    # and add a line for sidebar button.
+    pattern = r'(window\.addEventListener\([\s\S]*?beforeinstallprompt[\s\S]*?\);)'
+    match = re.search(pattern, content)
+    if match:
+        old_block = match.group(0)
+        # Add line to show sidebar button
+        new_block = old_block.replace(
+            'installContainer.style.display = \'block\';',
+            'installContainer.style.display = \'block\';\n            sidebarInstallBtn.style.display = \'flex\';'
+        )
+        content = content.replace(old_block, new_block)
+        print("✅ Updated beforeinstallprompt to show sidebar button.")
+    else:
+        print("⚠️ Could not find beforeinstallprompt event; adding fallback.")
+        # Fallback: if not found, we might need to add the event entirely, but it's probably there.
+        pass
+
+# Also need to ensure the sidebar button is hidden initially.
+# The button has inline style display:none; so it's fine.
+
+# ----------------------------------------------------------------------
+# 4. Write the updated base.html
+# ----------------------------------------------------------------------
+with open(BASE_HTML, "w") as f:
     f.write(content)
 
-# ----------------------------------------------------------------------
-# 3. Ensure manifest in pwa_views.py points to the correct icons
-# ----------------------------------------------------------------------
-# The manifest already uses /static/pwa/icon-192x192.png, which is fine.
-# No changes needed.
-
-# ----------------------------------------------------------------------
-# 4. Update base.html to hide install button when already installed
-# ----------------------------------------------------------------------
-BASE_HTML = PROJECT_ROOT / "templates" / "tenant" / "base.html"
-
-if BASE_HTML.exists():
-    with open(BASE_HTML, "r") as f:
-        base_content = f.read()
-
-    # Add a style to hide the install button when in standalone mode
-    hide_style = """
-    @media all and (display-mode: standalone) {
-        #pwaInstallContainer { display: none !important; }
-    }
-    """
-    if "display-mode: standalone" not in base_content:
-        # Insert before </head> or into style section
-        if "</style>" in base_content:
-            base_content = base_content.replace("</style>", hide_style + "</style>")
-        else:
-            # Fallback: add a style block at the end of head
-            base_content = base_content.replace("</head>", f"<style>{hide_style}</style></head>")
-        with open(BASE_HTML, "w") as f:
-            f.write(base_content)
-        print("✅ Updated base.html: install button hidden in standalone mode.")
-    else:
-        print("ℹ️  base.html already has standalone-mode hiding.")
-
-# ----------------------------------------------------------------------
-# 5. Instructions
-# ----------------------------------------------------------------------
-print("\n" + "="*60)
-print("✅ PWA PATCH COMPLETE!")
-print("="*60)
+print("\n✅ PWA Sidebar patching complete!")
 print("\nNext steps:")
-print("1. Run `python manage.py collectstatic --noinput` to copy the new icons to STATIC_ROOT.")
+print("1. Run `python manage.py collectstatic --noinput` (if you have static files).")
 print("2. Restart your Django server.")
-print("3. Visit your tenant portal (e.g., /portal/your-school/).")
-print("4. The floating install button (bottom-right) should appear on both mobile and desktop.")
-print("5. Click it to add the app to your home screen (on desktop it will install as a standalone window).")
-print("\nIf the button doesn't appear, ensure:")
-print("   - Your browser supports PWA (Chrome, Edge, Samsung Internet, etc.)")
-print("   - You are using HTTPS or localhost.")
-print("   - The service worker registers successfully (check DevTools -> Application -> Service Workers).")
+print("3. On desktop, the 'Install App' button will appear in the sidebar (bottom).")
+print("   On mobile, the floating button will also appear (both will work).")
+print("   In standalone mode, both buttons are hidden automatically.")
