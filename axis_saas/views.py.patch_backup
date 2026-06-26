@@ -1108,33 +1108,6 @@ def add_student(request, schema_name):
     return render(request, "tenant/student_form.html", context)
 
 
-@require_tenant_type(['school'])
-@require_school_feature('students')
-def add_student_mobile(request, schema_name):
-    tenant = get_tenant(request, schema_name)
-    with schema_context(schema_name):
-        if request.method == "POST":
-            form = StudentForm(request.POST)
-            if form.is_valid():
-                student = form.save(commit=False)
-                if student.custom_fee == 0:
-                    fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
-                    if fee_struct:
-                        student.custom_fee = fee_struct.monthly_fee
-                student.save()
-                messages.success(request, f"Student {student.name} added successfully. Roll No: {student.roll_number}")
-                return redirect("mobile_student_list", schema_name=schema_name)
-        else:
-            form = StudentForm()
-        grades = FeeStructure.objects.values_list("grade", flat=True).distinct()
-        context = {
-            "tenant": tenant,
-            "form": form,
-            "grades": grades,
-            "logo_url": tenant.school_logo.url if tenant.school_logo else None,
-        }
-    return render(request, "mobile/student_form.html", context)
-
 # ------------------- Edit Student -------------------
 @require_tenant_type(['school'])
 @require_school_feature('students')
