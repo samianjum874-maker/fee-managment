@@ -38,12 +38,21 @@ class FeeUtilsTests(SimpleTestCase):
         self.assertEqual(items, [])
         self.assertEqual(total_amount, Decimal('1800'))
 
+    def test_get_voucher_state_returns_create_mode_when_no_record_exists(self):
+        state = get_voucher_state(None)
+
+        self.assertFalse(state['read_only'])
+        self.assertTrue(state['can_edit'])
+        self.assertEqual(state['mode'], 'create')
+        self.assertIsNone(state['watermark'])
+
     def test_get_voucher_state_marks_unpaid_vouchers_editable(self):
         record = SimpleNamespace(status='pending', paid_amount=Decimal('0'))
         state = get_voucher_state(record)
 
         self.assertFalse(state['read_only'])
         self.assertTrue(state['can_edit'])
+        self.assertEqual(state['mode'], 'edit')
         self.assertIsNone(state['watermark'])
 
     def test_get_voucher_state_marks_paid_vouchers_read_only(self):
@@ -52,4 +61,5 @@ class FeeUtilsTests(SimpleTestCase):
 
         self.assertTrue(state['read_only'])
         self.assertFalse(state['can_edit'])
+        self.assertEqual(state['mode'], 'view')
         self.assertEqual(state['watermark'], 'PAID')

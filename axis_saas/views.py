@@ -256,6 +256,13 @@ def get_student_profile_context(request, schema_name, student_id):
         fee_records_qs = student.fee_records.all().order_by('-year', '-month')
         total_fee = fee_records_qs.aggregate(Sum('amount'))['amount__sum'] or 0
         fee_records = list(fee_records_qs)
+        current_record = student.fee_records.filter(month=current_month, year=current_year).first()
+        current_voucher_state = get_voucher_state(current_record)
+        voucher_button_label = 'Generate Voucher'
+        if current_voucher_state['mode'] == 'edit':
+            voucher_button_label = 'Edit Voucher'
+        elif current_voucher_state['mode'] == 'view':
+            voucher_button_label = 'View Voucher'
 
         payments_qs_all = student.payments.all().order_by('payment_date')
         if search_date:
@@ -330,6 +337,9 @@ def get_student_profile_context(request, schema_name, student_id):
             'item_purchase_total': item_purchase_total,
             'current_month': current_month,
             'current_year': current_year,
+            'current_record': current_record,
+            'current_voucher_state': current_voucher_state,
+            'voucher_button_label': voucher_button_label,
             'logo_url': tenant.school_logo.url if tenant.school_logo else None,
             'search_date': search_date,
         }

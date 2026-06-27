@@ -43,6 +43,9 @@
     {% endif %}
     <div class="actions">
       <a href="{% url 'student_profile' schema_name=tenant.schema_name student_id=student.id %}" class="btn-secondary">Back to Profile</a>
+      {% if voucher_state.can_edit %}
+      <a href="{% url 'student_profile' schema_name=tenant.schema_name student_id=student.id %}?open_voucher=1" class="btn-secondary">Edit Voucher</a>
+      {% endif %}
       <button class="btn-primary" onclick="window.print()">Print Voucher</button>
     </div>
   </div>
