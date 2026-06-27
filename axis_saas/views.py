@@ -50,6 +50,7 @@ def require_school_feature(feature_key):
 
 from .models import SchoolClient, Student, FeeStructure, FeeRecord, PaymentTransaction, SchoolFeeSettings, Product, ProductCategory
 from .forms import StudentForm, FeeCollectionForm, FeeSettingsForm, FeeStructureForm, FamilyPaymentForm
+from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items
 
 
 def get_overall_pending(student):
@@ -73,6 +74,37 @@ def local_time_str(dt):
     from django.utils import timezone
     local = timezone.localtime(dt)
     return local.strftime('%H:%M')
+
+
+def resolve_student_fee_plan(student, custom_amount=None, custom_items=None, save_for_future=False):
+    base_fee = Decimal('0')
+    if custom_amount is not None and str(custom_amount).strip() != '':
+        try:
+            base_fee = Decimal(str(custom_amount))
+        except (TypeError, ValueError):
+            raise ValueError('Invalid custom amount')
+    else:
+        base_fee = student.custom_fee if student.custom_fee > 0 else Decimal('0')
+        if base_fee <= 0:
+            fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
+            if fee_struct:
+                base_fee = fee_struct.monthly_fee
+                student.custom_fee = base_fee
+                student.save(update_fields=['custom_fee'])
+
+    if base_fee <= 0:
+        raise ValueError('No fee structure defined for this grade and no valid custom amount provided.')
+
+    items = parse_fee_items(custom_items)
+    if not items:
+        items = parse_fee_items(getattr(student, 'fee_custom_items', []))
+
+    if save_for_future and items:
+        student.fee_custom_items = items
+        student.save(update_fields=['fee_custom_items'])
+
+    total_amount = calculate_fee_total(base_fee, items)
+    return base_fee, items, total_amount
 
 
 def get_tenant(request, schema_name):
@@ -1234,26 +1266,20 @@ def manual_generate_api(request):
         skipped_existing = 0
         skipped_no_fee = 0
         for student in students:
-            # Check if already has fee record for this month
             existing = FeeRecord.objects.filter(student=student, month=month, year=year).first()
             if existing:
                 skipped_existing += 1
                 continue
-            base_fee = student.custom_fee if student.custom_fee > 0 else 0
-            if base_fee == 0:
-                fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
-                if fee_struct:
-                    base_fee = fee_struct.monthly_fee
-                    student.custom_fee = base_fee
-                    student.save(update_fields=["custom_fee"])
-            if base_fee > 0:
-                FeeRecord.objects.create(
-                    student=student, month=month, year=year,
-                    amount=base_fee, due_date=due_date, status="pending"
-                )
-                created += 1
-            else:
+            try:
+                _, _, total_amount = resolve_student_fee_plan(student)
+            except ValueError:
                 skipped_no_fee += 1
+                continue
+            FeeRecord.objects.create(
+                student=student, month=month, year=year,
+                amount=total_amount, due_date=due_date, status="pending"
+            )
+            created += 1
         message = f"Generated {created} fee records for {month}/{year}."
         if skipped_existing > 0:
             message += f" Skipped {skipped_existing} students because they already have a fee record."
@@ -1272,6 +1298,8 @@ def manual_generate_single_api(request):
         return JsonResponse({"error": "No tenant schema"}, status=400)
     student_id = request.GET.get("student_id") or request.POST.get("student_id")
     custom_amount = request.POST.get("custom_amount") or request.GET.get("custom_amount")
+    custom_items = request.POST.get("custom_items") or request.GET.get("custom_items")
+    save_for_future = (request.POST.get("save_for_future") or request.GET.get("save_for_future") or "").lower() in {"1", "true", "yes", "on"}
     if not student_id:
         return JsonResponse({"error": "Student ID required"}, status=400)
     print(f"[DEBUG] manual_generate_single_api called for student {student_id}, custom_amount={custom_amount}")
@@ -1297,40 +1325,28 @@ def manual_generate_single_api(request):
                 "error": f"Fee already exists for {month}/{year} with paid amount ₹{existing_record.paid_amount}. Cannot modify."
             }, status=400)
         
-        # Determine fee amount
-        if custom_amount:
-            try:
-                base_fee = Decimal(custom_amount)
-                if base_fee <= 0:
-                    raise ValueError
-            except:
-                return JsonResponse({"error": "Invalid custom amount"}, status=400)
-        else:
-            base_fee = student.custom_fee if student.custom_fee > 0 else 0
-            if base_fee == 0:
-                fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
-                if fee_struct:
-                    base_fee = fee_struct.monthly_fee
-                    student.custom_fee = base_fee
-                    student.save(update_fields=["custom_fee"])
-            if base_fee <= 0:
-                return JsonResponse({"error": "No fee structure defined for this grade and no valid custom amount provided."}, status=400)
+        try:
+            base_fee, items, total_amount = resolve_student_fee_plan(student, custom_amount=custom_amount, custom_items=custom_items, save_for_future=save_for_future)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         
         due_date = today + timedelta(days=settings.due_date_offset)
+        record_remarks = serialize_fee_items(items)
         
         if existing_record:
-            existing_record.amount = base_fee
+            existing_record.amount = total_amount
             existing_record.due_date = due_date
-            existing_record.save()
-            print(f"[DEBUG] Updated fee for {student.name} to ₹{base_fee}")
-            return JsonResponse({"message": f"Fee amount updated for {student.name} for {month}/{year} to ₹{base_fee}."})
+            existing_record.remarks = record_remarks
+            existing_record.save(update_fields=["amount", "due_date", "remarks"])
+            print(f"[DEBUG] Updated fee for {student.name} to ₹{total_amount}")
+            return JsonResponse({"message": f"Fee voucher updated for {student.name} for {month}/{year} to ₹{total_amount}."})
         else:
             FeeRecord.objects.create(
                 student=student, month=month, year=year,
-                amount=base_fee, due_date=due_date, status="pending"
+                amount=total_amount, due_date=due_date, status="pending", remarks=record_remarks
             )
-            print(f"[DEBUG] Created fee for {student.name} with amount ₹{base_fee}")
-            return JsonResponse({"message": f"Fee record created for {student.name} for {month}/{year} with amount ₹{base_fee}."})
+            print(f"[DEBUG] Created fee for {student.name} with amount ₹{total_amount}")
+            return JsonResponse({"message": f"Fee voucher created for {student.name} for {month}/{year} with amount ₹{total_amount}."})
 
 def student_fee_records_api(request, schema_name, student_id):
     """API: Return JSON list of fee records for a student."""
@@ -1398,16 +1414,21 @@ def student_current_fee_status_api(request, schema_name, student_id):
         year = today.year
         try:
             record = FeeRecord.objects.get(student=student, month=month, year=year)
+            current_items = parse_fee_items(record.remarks)
+            current_base_fee = record.amount
+            if current_items:
+                current_base_fee = current_base_fee - sum(Decimal(str(item.get('amount', 0))) for item in current_items)
             data = {
                 'exists': True,
                 'amount': float(record.amount),
+                'base_fee': float(current_base_fee if current_base_fee > 0 else record.amount),
+                'custom_items': current_items,
                 'paid_amount': float(record.paid_amount),
                 'status': record.get_status_display(),
                 'due_date': record.due_date.isoformat(),
                 'can_edit': record.paid_amount == 0   # allow edit only if unpaid
             }
         except FeeRecord.DoesNotExist:
-            # Return default fee info
             default_fee = float(student.custom_fee) if student.custom_fee > 0 else 0
             if default_fee == 0:
                 from .models import FeeStructure
@@ -1417,7 +1438,8 @@ def student_current_fee_status_api(request, schema_name, student_id):
             data = {
                 'exists': False,
                 'default_fee': default_fee,
-                'grade': student.grade
+                'grade': student.grade,
+                'saved_items': parse_fee_items(getattr(student, 'fee_custom_items', []))
             }
         return JsonResponse(data)
 

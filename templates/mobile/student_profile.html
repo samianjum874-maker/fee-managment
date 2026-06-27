@@ -440,6 +440,12 @@
       </svg>
       Collect
     </a>
+    <button class="btn-primary" id="genFeeBtn" style="flex:1;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+      Voucher
+    </button>
     <button class="btn-secondary" id="editProfileBtn">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -579,6 +585,31 @@
   Back to Students
 </a>
 
+<!-- ========== VOUCHER MODAL ========== -->
+<div id="voucherModal" class="modal-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="closeVoucherModal">&times;</button>
+    <h2>Generate Fee Voucher</h2>
+    <div style="margin-bottom: 12px; font-size:0.9rem; color:var(--text-muted);">{{ student.name }} • {{ current_month }}/{{ current_year }}</div>
+    <div class="form-group">
+      <label for="mobileFeeBaseAmount">Base Amount (₹)</label>
+      <input type="number" id="mobileFeeBaseAmount" step="0.01" placeholder="Leave empty for default">
+    </div>
+    <div class="form-group">
+      <label>Optional Extra Charges</label>
+      <div id="mobileCustomItemsRows"></div>
+      <button type="button" id="mobileAddItemBtn" class="btn-secondary" style="margin-top:8px; padding:8px 12px; border-radius:999px;">+ Add Item</button>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" id="mobileSaveForFuture"> Save these items for future vouchers</label>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" id="cancelVoucherBtn">Cancel</button>
+      <button type="button" class="btn-primary" id="confirmVoucherBtn">Generate</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== EDIT MODAL ========== -->
 <div id="editModal" class="modal-overlay">
   <div class="modal-box">
@@ -688,6 +719,81 @@
 
 <script>
   (function() {
+    const voucherModal = document.getElementById('voucherModal');
+    const openVoucherBtn = document.getElementById('genFeeBtn');
+    const closeVoucher = document.getElementById('closeVoucherModal');
+    const cancelVoucher = document.getElementById('cancelVoucherBtn');
+    const confirmVoucher = document.getElementById('confirmVoucherBtn');
+    const mobileBaseAmount = document.getElementById('mobileFeeBaseAmount');
+    const mobileCustomItemsRows = document.getElementById('mobileCustomItemsRows');
+    const mobileAddItemBtn = document.getElementById('mobileAddItemBtn');
+    const mobileSaveForFuture = document.getElementById('mobileSaveForFuture');
+
+    function buildMobileItemRow(item = {}) {
+      const row = document.createElement('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '1.2fr 0.8fr auto';
+      row.style.gap = '8px';
+      row.style.marginBottom = '8px';
+      row.innerHTML = `
+        <input type="text" class="mobile-item-title" value="${(item.title || '').replace(/"/g, '&quot;')}" placeholder="Title">
+        <input type="number" class="mobile-item-amount" step="0.01" value="${item.amount || ''}" placeholder="Amount">
+        <button type="button" style="border:none; border-radius:999px; background:#ef4444; color:white; width:32px;">×</button>
+      `;
+      row.querySelector('button').addEventListener('click', () => row.remove());
+      return row;
+    }
+
+    function getMobileCustomItems() {
+      return Array.from(mobileCustomItemsRows.querySelectorAll('div')).map(row => {
+        const title = row.querySelector('.mobile-item-title')?.value.trim() || '';
+        const amount = row.querySelector('.mobile-item-amount')?.value.trim() || '';
+        if (!title && !amount) return null;
+        return { title, amount };
+      }).filter(Boolean);
+    }
+
+    if (mobileAddItemBtn) {
+      mobileAddItemBtn.addEventListener('click', () => mobileCustomItemsRows.appendChild(buildMobileItemRow()));
+    }
+    function openVoucherModal() {
+      mobileBaseAmount.value = '';
+      mobileSaveForFuture.checked = false;
+      mobileCustomItemsRows.innerHTML = '';
+      mobileCustomItemsRows.appendChild(buildMobileItemRow());
+      voucherModal.classList.add('active');
+    }
+    function closeVoucherModal() {
+      voucherModal.classList.remove('active');
+    }
+    openVoucherBtn?.addEventListener('click', openVoucherModal);
+    closeVoucher?.addEventListener('click', closeVoucherModal);
+    cancelVoucher?.addEventListener('click', closeVoucherModal);
+    voucherModal?.addEventListener('click', function(e) { if (e.target === this) closeVoucherModal(); });
+
+    confirmVoucher?.addEventListener('click', async function() {
+      const baseAmount = mobileBaseAmount.value.trim();
+      const items = getMobileCustomItems();
+      const saveForFuture = mobileSaveForFuture.checked;
+      const formData = new FormData();
+      formData.append('student_id', '{{ student.id }}');
+      if (baseAmount) formData.append('custom_amount', baseAmount);
+      if (items.length) formData.append('custom_items', JSON.stringify(items));
+      if (saveForFuture) formData.append('save_for_future', '1');
+      try {
+        const resp = await fetch('/api/manual-generate-single/', {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        });
+        const data = await resp.json();
+        alert(data.message || data.error || 'Done');
+        if (resp.ok) window.location.reload();
+      } catch (err) {
+        alert('Error generating voucher: ' + err.message);
+      }
+    });
+
     // ---- Edit Modal ----
     const editModal = document.getElementById('editModal');
     const editBtn = document.getElementById('editProfileBtn');

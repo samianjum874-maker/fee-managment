@@ -9,7 +9,7 @@
     <div class="header-actions">
         <a href="{% url 'edit_student' schema_name=tenant.schema_name student_id=student.id %}" class="btn-secondary"><svg class="inline-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4Z"/></svg> Edit</a>
         <a href="{% url 'fee_collection' schema_name=tenant.schema_name student_id=student.id %}" class="btn-primary"><svg class="inline-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M8 10h8"/></svg> Collect Pending</a>
-        <button id="genFeeBtn" class="btn-primary"><svg class="inline-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Current Month Fee</button>
+        <button id="genFeeBtn" class="btn-primary"><svg class="inline-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Voucher</button>
         <a href="{% url 'student_list' schema_name=tenant.schema_name %}" class="btn-secondary"><svg class="inline-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg> Back</a>
     </div>
 </div>
@@ -125,10 +125,18 @@
         <p><strong>Student:</strong> {{ student.name }}</p>
         <p><strong>Default Fee (from class):</strong> <span id="defaultFeeDisplay">₹0</span></p>
         <div>
-            <label>Custom Amount (₹) - leave empty to use default</label>
+            <label>Base Amount (₹) - leave empty to use default</label>
             <input type="number" id="customFeeAmount" step="0.01" placeholder="Enter custom amount">
         </div>
-        <p style="font-size:0.8rem; color:var(--muted);">Note: Custom amount applies only to <strong>{{ current_month }}/{{ current_year }}</strong>. Future months will use the class fee structure.</p>
+        <div class="voucher-section">
+            <label>Optional Extra Charges</label>
+            <div id="customItemsRows"></div>
+            <button type="button" id="addCustomItemBtn" class="btn-secondary" style="margin-top:0.5rem; padding:0.35rem 0.7rem; border-radius:999px;">+ Add Item</button>
+        </div>
+        <div class="voucher-checkbox">
+            <label><input type="checkbox" id="saveForFutureToggle"> Save these additional items for future vouchers</label>
+        </div>
+        <p style="font-size:0.8rem; color:var(--muted);">Note: This voucher applies only to <strong>{{ current_month }}/{{ current_year }}</strong>. Future months will use the class fee structure unless you save custom items.</p>
         <div class="modal-actions">
             <button id="cancelFeeModalBtn" class="btn-secondary">Cancel</button>
             <button id="confirmFeeModalBtn" class="btn-primary">Generate</button>
@@ -173,6 +181,12 @@
 .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
     .item-summary-box { background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem; color: var(--text); }
     .remark-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.45rem; border-radius: 999px; background: rgba(14,165,233,0.12); color: var(--primary); font-size: 0.72rem; font-weight: 700; }
+    .voucher-section { margin-top: 0.85rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 0.8rem; background: var(--surface-alt); }
+    .voucher-section label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+    .voucher-checkbox { margin-top: 0.7rem; font-size: 0.85rem; color: var(--muted); }
+    .custom-item-row { display: grid; grid-template-columns: 1.4fr 0.8fr auto; gap: 0.4rem; margin-bottom: 0.45rem; }
+    .custom-item-row input { margin: 0; }
+    .custom-item-row button { border: none; background: var(--danger); color: white; border-radius: 999px; width: 2rem; cursor: pointer; }
 
 
 <script>
@@ -289,8 +303,10 @@ const cancelBtn = document.getElementById('cancelFeeModalBtn');
 const amountInput = document.getElementById('customFeeAmount');
 const defaultFeeSpan = document.getElementById('defaultFeeDisplay');
 const modalTitle = document.getElementById('modalTitle');
+const addCustomItemBtn = document.getElementById('addCustomItemBtn');
+const customItemsRows = document.getElementById('customItemsRows');
+const saveForFutureToggle = document.getElementById('saveForFutureToggle');
 
-// Helper to get modal-actions div
 function getModalActionsDiv() {
     return modal.querySelector('.modal-actions');
 }
@@ -319,6 +335,36 @@ async function getCurrentFeeStatus() {
     return await resp.json();
 }
 
+function buildCustomItemRow(item = {}) {
+    const row = document.createElement('div');
+    row.className = 'custom-item-row';
+    row.innerHTML = `
+        <input type="text" class="custom-item-title" value="${(item.title || '').replace(/"/g, '&quot;')}" placeholder="Title">
+        <input type="number" class="custom-item-amount" step="0.01" value="${item.amount || ''}" placeholder="Amount">
+        <button type="button" aria-label="Remove item">×</button>
+    `;
+    row.querySelector('button').addEventListener('click', () => row.remove());
+    return row;
+}
+
+function renderCustomItems(items = []) {
+    customItemsRows.innerHTML = '';
+    if (!items.length) {
+        customItemsRows.appendChild(buildCustomItemRow());
+        return;
+    }
+    items.forEach(item => customItemsRows.appendChild(buildCustomItemRow(item)));
+}
+
+function getCustomItems() {
+    return Array.from(customItemsRows.querySelectorAll('.custom-item-row')).map(row => {
+        const title = row.querySelector('.custom-item-title').value.trim();
+        const amount = row.querySelector('.custom-item-amount').value.trim();
+        if (!title && !amount) return null;
+        return { title, amount };
+    }).filter(Boolean);
+}
+
 async function showFeeModal() {
     console.log('[DEBUG] showFeeModal called');
     try {
@@ -328,7 +374,8 @@ async function showFeeModal() {
         
         // Reset modal UI
         amountInput.value = '';
-        modalTitle.innerText = 'Generate Current Month Fee';
+        saveForFutureToggle.checked = false;
+        modalTitle.innerText = 'Generate Voucher';
         // Remove any old info div
         const oldInfo = document.getElementById('modalInfo');
         if (oldInfo) oldInfo.remove();
@@ -341,7 +388,7 @@ async function showFeeModal() {
         if (status.exists) {
             if (status.paid_amount > 0) {
                 // Already paid, show read-only info
-                modalTitle.innerText = 'Fee Already Processed';
+                modalTitle.innerText = 'Voucher Already Processed';
                 const infoDiv = document.createElement('div');
                 infoDiv.id = 'modalInfo';
                 infoDiv.innerHTML = `<p><strong>Amount:</strong> ₹${status.amount.toFixed(2)}</p>
@@ -359,7 +406,7 @@ async function showFeeModal() {
                 return;
             } else {
                 // Exists but unpaid – allow update
-                modalTitle.innerText = 'Update Current Month Fee';
+                modalTitle.innerText = 'Update Current Month Voucher';
                 defaultFeeSpan.innerText = `Current fee: ₹${status.amount.toFixed(2)} (unpaid)`;
                 amountInput.placeholder = `New amount (₹) - leave empty to keep ₹${status.amount.toFixed(2)}`;
                 confirmBtn.innerText = 'Update Fee';
@@ -375,6 +422,7 @@ async function showFeeModal() {
                 defaultFeeSpan.innerText = '₹' + defaultFee.toFixed(2);
                 amountInput.placeholder = 'Leave empty for default';
             }
+            renderCustomItems(Array.isArray(status.saved_items) ? status.saved_items : []);
             confirmBtn.innerText = 'Generate';
             openModal();
         }
@@ -384,7 +432,7 @@ async function showFeeModal() {
     }
 }
 
-async function generateWithCustom(customAmount) {
+async function generateWithCustom(customAmount, customItems = [], saveForFuture = false) {
     const btn = document.getElementById('genFeeBtn');
     btn.disabled = true;
     const originalText = btn.innerText;
@@ -394,6 +442,12 @@ async function generateWithCustom(customAmount) {
         formData.append('student_id', studentId);
         if (customAmount !== undefined && customAmount !== null && customAmount !== '') {
             formData.append('custom_amount', customAmount);
+        }
+        if (customItems.length) {
+            formData.append('custom_items', JSON.stringify(customItems));
+        }
+        if (saveForFuture) {
+            formData.append('save_for_future', '1');
         }
         console.log('[DEBUG] POST /api/manual-generate-single/ with data:', formData.toString());
         const resp = await fetch('/api/manual-generate-single/', {
@@ -407,8 +461,7 @@ async function generateWithCustom(customAmount) {
         } else {
             alert(data.message);
             await refreshData();
-            // Redirect to fee collection page for this student
-            window.location.href = `/portal/${schema}/fee/collection/${studentId}/`;
+            window.location.reload();
         }
     } catch(e) {
         console.error('Generation error:', e);
@@ -422,21 +475,29 @@ async function generateWithCustom(customAmount) {
 
 confirmBtn.onclick = function() {
     let customAmount = amountInput.value.trim();
+    const customItems = getCustomItems();
+    const saveForFuture = saveForFutureToggle.checked;
     if (customAmount === '') {
-        generateWithCustom(undefined);
+        generateWithCustom(undefined, customItems, saveForFuture);
     } else {
         let num = parseFloat(customAmount);
         if (isNaN(num) || num <= 0) {
             alert('Please enter a valid positive amount');
             return;
         }
-        generateWithCustom(num);
+        generateWithCustom(num, customItems, saveForFuture);
     }
 };
 cancelBtn.onclick = closeModal;
 window.onclick = function(event) {
     if (event.target === modal) closeModal();
 };
+
+if (addCustomItemBtn) {
+    addCustomItemBtn.addEventListener('click', () => {
+        customItemsRows.appendChild(buildCustomItemRow());
+    });
+}
 
 // Attach click handler to generate button
 const genBtn = document.getElementById('genFeeBtn');
