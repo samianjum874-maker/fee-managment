@@ -55,3 +55,38 @@ def parse_fee_items(value):
 def serialize_fee_items(items):
     parsed = parse_fee_items(items)
     return json.dumps(parsed)
+
+
+def resolve_student_fee_plan(student, custom_amount=None, custom_items=None, save_for_future=False):
+    from .models import FeeStructure
+
+    base_fee = Decimal('0')
+    if custom_amount is not None and str(custom_amount).strip() != '':
+        try:
+            base_fee = Decimal(str(custom_amount))
+        except (TypeError, ValueError):
+            raise ValueError('Invalid custom amount')
+    else:
+        base_fee = Decimal(str(getattr(student, 'custom_fee', 0) or 0))
+        if base_fee <= 0:
+            fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
+            if fee_struct:
+                base_fee = fee_struct.monthly_fee
+                if hasattr(student, 'custom_fee'):
+                    student.custom_fee = base_fee
+                    student.save(update_fields=['custom_fee'])
+
+    if base_fee <= 0:
+        raise ValueError('No fee structure defined for this grade and no valid custom amount provided.')
+
+    items = parse_fee_items(custom_items)
+    if not items:
+        items = parse_fee_items(getattr(student, 'fee_custom_items', []))
+
+    if save_for_future and items:
+        if hasattr(student, 'fee_custom_items'):
+            student.fee_custom_items = items
+            student.save(update_fields=['fee_custom_items'])
+
+    total_amount = calculate_fee_total(base_fee, items)
+    return base_fee, items, total_amount

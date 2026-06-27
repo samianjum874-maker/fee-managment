@@ -787,7 +787,11 @@
           headers: { 'X-CSRFToken': '{{ csrf_token }}' }
         });
         const data = await resp.json();
-        alert(data.message || data.error || 'Done');
+        if (!resp.ok || data.error) {
+          alert(data.error || 'Failed to generate voucher');
+          return;
+        }
+        alert(data.message || 'Voucher generated');
         if (resp.ok) window.location.reload();
       } catch (err) {
         alert('Error generating voucher: ' + err.message);

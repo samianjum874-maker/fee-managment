@@ -459,9 +459,29 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
         if (data.error) {
             alert('Error: ' + data.error);
         } else {
-            alert(data.message);
+            const detailBox = document.createElement('div');
+            detailBox.id = 'modalInfo';
+            detailBox.innerHTML = `
+                <div class="item-summary-box" style="margin-bottom: 0.8rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.3rem;">Voucher Ready</div>
+                    <div><strong>Student:</strong> {{ student.name }}</div>
+                    <div><strong>Period:</strong> ${data.month || '{{ current_month }}/{{ current_year }}'}</div>
+                    <div><strong>Amount:</strong> ₹${Number(data.amount || 0).toFixed(2)}</div>
+                    <div><strong>Status:</strong> ${data.status || 'Pending'}</div>
+                </div>`;
+            const content = modal.querySelector('.modal-content');
+            const existingInfo = document.getElementById('modalInfo');
+            if (existingInfo) existingInfo.remove();
+            content.insertBefore(detailBox, getModalActionsDiv());
+            const amountDiv = amountInput.closest('div');
+            if (amountDiv) amountDiv.style.display = 'none';
+            const actionsDiv = getModalActionsDiv();
+            if (actionsDiv) actionsDiv.style.display = 'none';
+            modalTitle.innerText = 'Voucher Generated';
             await refreshData();
-            window.location.reload();
+            setTimeout(() => {
+                window.location.reload();
+            }, 700);
         }
     } catch(e) {
         console.error('Generation error:', e);

@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django_tenants.utils import schema_context
-from axis_saas.models import SchoolClient, SchoolFeeSettings, Student, FeeRecord, FeeStructure
+from axis_saas.models import SchoolClient, SchoolFeeSettings, Student, FeeRecord
+from axis_saas.fee_utils import resolve_student_fee_plan
 from datetime import date, timedelta
 
 class Command(BaseCommand):
@@ -14,17 +15,30 @@ class Command(BaseCommand):
                 settings, _ = SchoolFeeSettings.objects.get_or_create(pk=1)
                 if today.day == settings.fee_generation_day:
                     month, year = today.month, today.year
-                    if FeeRecord.objects.filter(month=month, year=year).exists():
-                        self.stdout.write(f"{tenant.schema_name}: fees already generated for {month}/{year}")
-                        continue
                     due_date = today + timedelta(days=settings.due_date_offset)
                     students = Student.objects.filter(status='active')
                     created = 0
+                    updated = 0
+                    skipped = 0
                     for s in students:
-                        fee = s.custom_fee if s.custom_fee > 0 else (FeeStructure.objects.filter(grade=s.grade).first().monthly_fee if FeeStructure.objects.filter(grade=s.grade).exists() else 0)
-                        if fee:
-                            FeeRecord.objects.get_or_create(student=s, month=month, year=year, defaults={'amount': fee, 'due_date': due_date})
+                        existing = FeeRecord.objects.filter(student=s, month=month, year=year).first()
+                        if existing and existing.paid_amount > 0:
+                            skipped += 1
+                            continue
+                        try:
+                            _, _, amount = resolve_student_fee_plan(s)
+                        except ValueError:
+                            skipped += 1
+                            continue
+                        if existing:
+                            existing.amount = amount
+                            existing.due_date = due_date
+                            existing.remarks = ''
+                            existing.save(update_fields=['amount', 'due_date', 'remarks'])
+                            updated += 1
+                        else:
+                            FeeRecord.objects.create(student=s, month=month, year=year, amount=amount, due_date=due_date, status='pending')
                             created += 1
-                    self.stdout.write(f"{tenant.schema_name}: generated {created} records for {month}/{year}")
+                    self.stdout.write(f"{tenant.schema_name}: generated {created} records, updated {updated} existing, skipped {skipped} for {month}/{year}")
                 else:
                     self.stdout.write(f"{tenant.schema_name}: generation day {settings.fee_generation_day} not today")

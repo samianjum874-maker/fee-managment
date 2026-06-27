@@ -50,7 +50,7 @@ def require_school_feature(feature_key):
 
 from .models import SchoolClient, Student, FeeStructure, FeeRecord, PaymentTransaction, SchoolFeeSettings, Product, ProductCategory
 from .forms import StudentForm, FeeCollectionForm, FeeSettingsForm, FeeStructureForm, FamilyPaymentForm
-from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items
+from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items, resolve_student_fee_plan
 
 
 def get_overall_pending(student):
@@ -74,37 +74,6 @@ def local_time_str(dt):
     from django.utils import timezone
     local = timezone.localtime(dt)
     return local.strftime('%H:%M')
-
-
-def resolve_student_fee_plan(student, custom_amount=None, custom_items=None, save_for_future=False):
-    base_fee = Decimal('0')
-    if custom_amount is not None and str(custom_amount).strip() != '':
-        try:
-            base_fee = Decimal(str(custom_amount))
-        except (TypeError, ValueError):
-            raise ValueError('Invalid custom amount')
-    else:
-        base_fee = student.custom_fee if student.custom_fee > 0 else Decimal('0')
-        if base_fee <= 0:
-            fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
-            if fee_struct:
-                base_fee = fee_struct.monthly_fee
-                student.custom_fee = base_fee
-                student.save(update_fields=['custom_fee'])
-
-    if base_fee <= 0:
-        raise ValueError('No fee structure defined for this grade and no valid custom amount provided.')
-
-    items = parse_fee_items(custom_items)
-    if not items:
-        items = parse_fee_items(getattr(student, 'fee_custom_items', []))
-
-    if save_for_future and items:
-        student.fee_custom_items = items
-        student.save(update_fields=['fee_custom_items'])
-
-    total_amount = calculate_fee_total(base_fee, items)
-    return base_fee, items, total_amount
 
 
 def get_tenant(request, schema_name):
