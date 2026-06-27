@@ -409,6 +409,7 @@ async function showFeeModal() {
                 modalTitle.innerText = 'Update Current Month Voucher';
                 defaultFeeSpan.innerText = `Current fee: ₹${status.amount.toFixed(2)} (unpaid)`;
                 amountInput.placeholder = `New amount (₹) - leave empty to keep ₹${status.amount.toFixed(2)}`;
+                renderCustomItems(Array.isArray(status.custom_items) ? status.custom_items : []);
                 confirmBtn.innerText = 'Update Fee';
                 openModal();
                 return;

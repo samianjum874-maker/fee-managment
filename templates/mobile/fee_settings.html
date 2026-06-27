@@ -325,12 +325,14 @@
     <span>How it works</span>
   </div>
   <ul>
-    <li><strong>Automatic Generation:</strong> On the selected day of each month, the system creates fee records for all active students using the class fee structure first.</li>
-    <li><strong>Per-Student Overrides:</strong> If an admin sets a custom fee for a student for the current month, that amount is used for that voucher only, while future months revert to the class structure unless saved.</li>
-    <li><strong>Saved Extra Charges:</strong> Additional items can be saved for future vouchers and reused automatically when generating a new voucher.</li>
+    <li><strong>Automation Day:</strong> On the selected day of each month, the system refreshes the current month fee vouchers for all active students.</li>
+    <li><strong>First Voucher Flow:</strong> If a student has no current-month voucher yet, the system opens the normal generation form with the class fee as the default and lets the admin add a custom amount or extra charges.</li>
+    <li><strong>Unpaid Voucher Flow:</strong> If the current-month voucher already exists but is still unpaid or partially paid, the admin can open it, edit the amount or extra charges, and update the voucher.</li>
+    <li><strong>Paid Voucher Flow:</strong> If the current-month voucher is already paid or partially paid, the system opens the voucher in read-only mode with a watermark and allows print/save actions only.</li>
+    <li><strong>Saved Extra Charges:</strong> Any extra charges marked as saved will be reused automatically for future vouchers until the admin changes them.</li>
     <li><strong>Due Date:</strong> Fee becomes due after the configured offset days (e.g., generation on 1st with 15 days offset → due on 16th).</li>
     <li><strong>Late Fee:</strong> After due date, the penalty percentage is applied to the pending amount automatically.</li>
-    <li><strong>Manual Generation:</strong> Click the button above to force generation for the current month and skip students that already have a paid voucher.</li>
+    <li><strong>Current Month Generation:</strong> Use the button above to generate or refresh current-month vouchers for all active students without creating duplicates.</li>
   </ul>
 </div>
 
