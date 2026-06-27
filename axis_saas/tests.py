@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from django.test import SimpleTestCase
 
-from axis_saas.fee_utils import calculate_fee_total, resolve_student_fee_plan, should_generate_on_date
+from axis_saas.fee_utils import calculate_fee_total, get_voucher_state, resolve_student_fee_plan, should_generate_on_date
 
 
 class FeeUtilsTests(SimpleTestCase):
@@ -37,3 +37,19 @@ class FeeUtilsTests(SimpleTestCase):
         self.assertEqual(base_fee, Decimal('1800'))
         self.assertEqual(items, [])
         self.assertEqual(total_amount, Decimal('1800'))
+
+    def test_get_voucher_state_marks_unpaid_vouchers_editable(self):
+        record = SimpleNamespace(status='pending', paid_amount=Decimal('0'))
+        state = get_voucher_state(record)
+
+        self.assertFalse(state['read_only'])
+        self.assertTrue(state['can_edit'])
+        self.assertIsNone(state['watermark'])
+
+    def test_get_voucher_state_marks_paid_vouchers_read_only(self):
+        record = SimpleNamespace(status='paid', paid_amount=Decimal('1200'))
+        state = get_voucher_state(record)
+
+        self.assertTrue(state['read_only'])
+        self.assertFalse(state['can_edit'])
+        self.assertEqual(state['watermark'], 'PAID')

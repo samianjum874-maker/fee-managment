@@ -462,6 +462,7 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
         const detailBox = document.createElement('div');
         detailBox.id = 'modalInfo';
         const readOnly = Boolean(data.read_only);
+        const watermark = data.watermark ? `<div style="margin-top:0.35rem; color:#b45309; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Watermark: ${data.watermark}</div>` : '';
         const headerText = readOnly ? 'Voucher Already Processed' : (data.message && data.message.includes('updated') ? 'Voucher Updated' : 'Voucher Ready');
         const statusText = data.status || 'Pending';
         detailBox.innerHTML = `
@@ -472,6 +473,7 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
                 <div><strong>Amount:</strong> ₹${Number(data.amount || 0).toFixed(2)}</div>
                 <div><strong>Status:</strong> ${statusText}</div>
                 ${readOnly ? '<div style="margin-top:0.35rem; color:var(--primary); font-weight:600;">This voucher is already paid or partially paid. You can view or print it from the fee history.</div>' : ''}
+                ${watermark}
             </div>`;
         const content = modal.querySelector('.modal-content');
         const existingInfo = document.getElementById('modalInfo');
@@ -484,7 +486,11 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
         modalTitle.innerText = readOnly ? 'Voucher Already Processed' : 'Voucher Generated';
         await refreshData();
         setTimeout(() => {
-            window.location.reload();
+            if (data.voucher_url) {
+                window.location.href = data.voucher_url;
+            } else {
+                window.location.reload();
+            }
         }, 700);
     } catch(e) {
         console.error('Generation error:', e);

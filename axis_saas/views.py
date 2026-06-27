@@ -50,7 +50,7 @@ def require_school_feature(feature_key):
 
 from .models import SchoolClient, Student, FeeStructure, FeeRecord, PaymentTransaction, SchoolFeeSettings, Product, ProductCategory
 from .forms import StudentForm, FeeCollectionForm, FeeSettingsForm, FeeStructureForm, FamilyPaymentForm
-from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items, resolve_student_fee_plan, should_generate_on_date
+from .fee_utils import calculate_fee_total, get_voucher_state, parse_fee_items, serialize_fee_items, resolve_student_fee_plan, should_generate_on_date
 
 
 def get_overall_pending(student):
@@ -1315,29 +1315,71 @@ def manual_generate_single_api(request):
         record_remarks = serialize_fee_items(items)
         
         if existing_record:
-            if existing_record.paid_amount > 0:
+            voucher_state = get_voucher_state(existing_record)
+            if voucher_state['read_only']:
                 return JsonResponse({
                     "message": f"Fee voucher already processed for {student.name} for {month}/{year}.",
                     "status": existing_record.get_status_display(),
                     "amount": float(existing_record.amount),
                     "paid_amount": float(existing_record.paid_amount),
                     "read_only": True,
+                    "can_edit": False,
+                    "watermark": voucher_state['watermark'],
                     "month": month,
                     "year": year,
+                    "voucher_url": f"/portal/{schema_name}/students/{student.id}/voucher/",
                 })
             existing_record.amount = total_amount
             existing_record.due_date = due_date
             existing_record.remarks = record_remarks
             existing_record.save(update_fields=["amount", "due_date", "remarks"])
             print(f"[DEBUG] Updated fee for {student.name} to ₹{total_amount}")
-            return JsonResponse({"message": f"Fee voucher updated for {student.name} for {month}/{year} to ₹{total_amount}.", "status": existing_record.get_status_display(), "amount": float(existing_record.amount), "paid_amount": float(existing_record.paid_amount), "read_only": False, "month": month, "year": year})
+            return JsonResponse({"message": f"Fee voucher updated for {student.name} for {month}/{year} to ₹{total_amount}.", "status": existing_record.get_status_display(), "amount": float(existing_record.amount), "paid_amount": float(existing_record.paid_amount), "read_only": False, "can_edit": True, "watermark": None, "month": month, "year": year, "voucher_url": f"/portal/{schema_name}/students/{student.id}/voucher/"})
         else:
             FeeRecord.objects.create(
                 student=student, month=month, year=year,
                 amount=total_amount, due_date=due_date, status="pending", remarks=record_remarks
             )
             print(f"[DEBUG] Created fee for {student.name} with amount ₹{total_amount}")
-            return JsonResponse({"message": f"Fee voucher created for {student.name} for {month}/{year} with amount ₹{total_amount}.", "status": "Pending", "amount": float(total_amount), "paid_amount": 0.0, "read_only": False, "month": month, "year": year})
+            return JsonResponse({"message": f"Fee voucher created for {student.name} for {month}/{year} with amount ₹{total_amount}.", "status": "Pending", "amount": float(total_amount), "paid_amount": 0.0, "read_only": False, "can_edit": True, "watermark": None, "month": month, "year": year, "voucher_url": f"/portal/{schema_name}/students/{student.id}/voucher/"})
+
+@require_tenant_type(['school'])
+@require_school_feature('students')
+def student_fee_voucher(request, schema_name, student_id, force_mobile=False):
+    tenant = get_tenant(request, schema_name)
+    if is_mobile_user_agent(request) and not force_mobile:
+        return redirect('mobile_student_fee_voucher', schema_name=schema_name, student_id=student_id)
+    with schema_context(schema_name):
+        student = get_object_or_404(Student, id=student_id)
+        today = timezone.localdate()
+        record = FeeRecord.objects.filter(student=student, month=today.month, year=today.year).first()
+        items = parse_fee_items(getattr(record, 'remarks', '') if record else [])
+        base_fee = record.amount if record else Decimal('0')
+        if record and items:
+            base_fee = record.amount - sum(Decimal(str(item.get('amount', 0))) for item in items)
+        voucher_state = get_voucher_state(record)
+        context = {
+            'tenant': tenant,
+            'student': student,
+            'record': record,
+            'items': items,
+            'base_fee': base_fee,
+            'voucher_state': voucher_state,
+            'logo_url': tenant.school_logo.url if tenant.school_logo else None,
+            'current_month': today.month,
+            'current_year': today.year,
+            'watermark': voucher_state['watermark'],
+            'message': None if record else 'No current-month voucher exists yet. Generate one from the student profile to create a printable voucher.',
+        }
+    template = 'mobile/voucher.html' if force_mobile or is_mobile_user_agent(request) else 'tenant/voucher.html'
+    return render(request, template, context)
+
+
+@require_tenant_type(['school'])
+@require_school_feature('students')
+def mobile_student_fee_voucher(request, schema_name, student_id):
+    return student_fee_voucher(request, schema_name, student_id, force_mobile=True)
+
 
 def student_fee_records_api(request, schema_name, student_id):
     """API: Return JSON list of fee records for a student."""

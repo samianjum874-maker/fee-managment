@@ -58,6 +58,19 @@ def serialize_fee_items(items):
     return json.dumps(parsed)
 
 
+def get_voucher_state(record):
+    if record is None:
+        return {'read_only': False, 'can_edit': True, 'watermark': None}
+    paid_amount = Decimal(str(getattr(record, 'paid_amount', 0) or 0))
+    status = (getattr(record, 'status', '') or '').lower()
+    if paid_amount > 0 or status in {'paid', 'partial'}:
+        watermark = 'PAID' if status == 'paid' or paid_amount >= Decimal('0') and status != 'partial' else 'PARTIAL'
+        if status == 'partial':
+            watermark = 'PARTIAL'
+        return {'read_only': True, 'can_edit': False, 'watermark': watermark}
+    return {'read_only': False, 'can_edit': True, 'watermark': None}
+
+
 def should_generate_on_date(today, generation_day):
     try:
         generation_day = int(generation_day)

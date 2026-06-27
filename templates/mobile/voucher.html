@@ -1,0 +1,48 @@
+{% extends 'mobile/base.html' %}
+{% block title %}Fee Voucher | {{ student.name }}{% endblock %}
+{% block body %}
+<div class="page-shell">
+  <div class="card">
+    <div class="header">
+      <div>
+        <h1>Fee Voucher</h1>
+        <p>{{ tenant.name }} • {{ current_month }}/{{ current_year }}</p>
+      </div>
+      <div class="badge">{{ voucher_state.watermark|default:'PENDING' }}</div>
+    </div>
+    <div class="row"><span>Student</span><strong>{{ student.name }}</strong></div>
+    <div class="row"><span>Grade / Section</span><strong>{{ student.grade }} - {{ student.section }}</strong></div>
+    <div class="row"><span>Roll No</span><strong>{{ student.roll_number }}</strong></div>
+    <div class="row"><span>Status</span><strong>{{ record.get_status_display|default:'Pending' }}</strong></div>
+    <div class="divider"></div>
+    <div class="row"><span>Base Fee</span><strong>₹{{ base_fee|floatformat:2 }}</strong></div>
+    {% for item in items %}
+    <div class="row"><span>{{ item.title }}</span><strong>₹{{ item.amount }}</strong></div>
+    {% empty %}
+    <div class="row"><span>No extra charges</span><strong>—</strong></div>
+    {% endfor %}
+    <div class="row total"><span>Total Due</span><strong>₹{{ record.amount|floatformat:2 }}</strong></div>
+    {% if message %}
+    <div class="notice">{{ message }}</div>
+    {% endif %}
+    <div class="actions">
+      <a href="{% url 'mobile_student_profile' schema_name=tenant.schema_name student_id=student.id %}" class="btn-secondary">Back</a>
+      <button class="btn-primary" onclick="window.print()">Print</button>
+    </div>
+  </div>
+</div>
+<style>
+  .page-shell { padding: 16px; }
+  .card { background: var(--card); border-radius: 16px; padding: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.06); }
+  .header { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:12px; }
+  .badge { padding:6px 10px; border-radius:999px; background: rgba(14,165,233,0.12); color: var(--primary); font-weight:700; text-transform:uppercase; font-size: 0.8rem; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
+  .row.total { font-weight:700; }
+  .divider { height:1px; background:var(--border); margin:10px 0; }
+  .notice { margin-top:12px; padding:10px; border-radius:10px; background: rgba(245,158,11,0.12); color:#b45309; }
+  .actions { display:flex; gap:8px; margin-top:14px; }
+  .btn-primary, .btn-secondary { border:none; border-radius:999px; padding:10px 12px; text-decoration:none; font-weight:700; }
+  .btn-primary { background: var(--primary); color:white; }
+  .btn-secondary { background: var(--surface-alt); color:var(--text); }
+</style>
+{% endblock %}
