@@ -50,7 +50,7 @@ def require_school_feature(feature_key):
 
 from .models import SchoolClient, Student, FeeStructure, FeeRecord, PaymentTransaction, SchoolFeeSettings, Product, ProductCategory
 from .forms import StudentForm, FeeCollectionForm, FeeSettingsForm, FeeStructureForm, FamilyPaymentForm
-from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items, resolve_student_fee_plan
+from .fee_utils import calculate_fee_total, parse_fee_items, serialize_fee_items, resolve_student_fee_plan, should_generate_on_date
 
 
 def get_overall_pending(student):
@@ -1200,12 +1200,15 @@ def fee_status_api(request):
         today = timezone.localdate()
         gen_day = settings.fee_generation_day
         from calendar import monthrange
-        if today.day <= gen_day:
-            next_date = date(today.year, today.month, min(gen_day, monthrange(today.year, today.month)[1]))
+        current_month_days = monthrange(today.year, today.month)[1]
+        effective_day = min(int(gen_day), current_month_days)
+        if today.day <= effective_day:
+            next_date = date(today.year, today.month, effective_day)
         else:
             next_month = today.month + 1 if today.month < 12 else 1
             next_year = today.year + 1 if today.month == 12 else today.year
-            next_date = date(next_year, next_month, min(gen_day, monthrange(next_year, next_month)[1]))
+            next_month_days = monthrange(next_year, next_month)[1]
+            next_date = date(next_year, next_month, min(int(gen_day), next_month_days))
         return JsonResponse({"last_generation": last_gen, "next_generation": next_date.strftime("%Y-%m-%d"), "status": "success"})
 
 
@@ -1232,12 +1235,25 @@ def manual_generate_api(request):
             return JsonResponse({"message": "No active students found."})
         due_date = today + timedelta(days=settings.due_date_offset)
         created = 0
+        updated = 0
         skipped_existing = 0
         skipped_no_fee = 0
         for student in students:
             existing = FeeRecord.objects.filter(student=student, month=month, year=year).first()
             if existing:
-                skipped_existing += 1
+                if existing.paid_amount > 0:
+                    skipped_existing += 1
+                    continue
+                try:
+                    _, _, total_amount = resolve_student_fee_plan(student)
+                except ValueError:
+                    skipped_no_fee += 1
+                    continue
+                existing.amount = total_amount
+                existing.due_date = due_date
+                existing.remarks = ''
+                existing.save(update_fields=['amount', 'due_date', 'remarks'])
+                updated += 1
                 continue
             try:
                 _, _, total_amount = resolve_student_fee_plan(student)
@@ -1249,12 +1265,14 @@ def manual_generate_api(request):
                 amount=total_amount, due_date=due_date, status="pending"
             )
             created += 1
-        message = f"Generated {created} fee records for {month}/{year}."
+        message = f"Generated {created} new fee records for {month}/{year}."
+        if updated > 0:
+            message += f" Updated {updated} existing unpaid vouchers."
         if skipped_existing > 0:
-            message += f" Skipped {skipped_existing} students because they already have a fee record."
+            message += f" Skipped {skipped_existing} students because they already have a paid voucher."
         if skipped_no_fee > 0:
             message += f" Skipped {skipped_no_fee} students because no fee structure defined for their grade."
-        return JsonResponse({"message": message, "created": created, "skipped_existing": skipped_existing, "skipped_no_fee": skipped_no_fee})
+        return JsonResponse({"message": message, "created": created, "updated": updated, "skipped_existing": skipped_existing, "skipped_no_fee": skipped_no_fee})
 @csrf_exempt
 @require_http_methods(["POST"])
 

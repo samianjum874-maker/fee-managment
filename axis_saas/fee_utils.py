@@ -1,4 +1,5 @@
 import json
+from calendar import monthrange
 from decimal import Decimal
 
 
@@ -55,6 +56,18 @@ def parse_fee_items(value):
 def serialize_fee_items(items):
     parsed = parse_fee_items(items)
     return json.dumps(parsed)
+
+
+def should_generate_on_date(today, generation_day):
+    try:
+        generation_day = int(generation_day)
+    except (TypeError, ValueError):
+        return False
+    if generation_day < 1:
+        return False
+    max_day = monthrange(today.year, today.month)[1]
+    effective_day = min(generation_day, max_day)
+    return today.day == effective_day
 
 
 def resolve_student_fee_plan(student, custom_amount=None, custom_items=None, save_for_future=False):

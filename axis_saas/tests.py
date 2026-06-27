@@ -1,8 +1,9 @@
+from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from django.test import SimpleTestCase
 
-from axis_saas.fee_utils import calculate_fee_total, resolve_student_fee_plan
+from axis_saas.fee_utils import calculate_fee_total, resolve_student_fee_plan, should_generate_on_date
 
 
 class FeeUtilsTests(SimpleTestCase):
@@ -20,3 +21,7 @@ class FeeUtilsTests(SimpleTestCase):
         self.assertEqual(base_fee, Decimal('1000'))
         self.assertEqual(items[0]['title'], 'Security')
         self.assertEqual(total_amount, Decimal('1050.00'))
+
+    def test_should_generate_on_date_uses_last_day_for_short_months(self):
+        self.assertTrue(should_generate_on_date(date(2024, 2, 29), 31))
+        self.assertFalse(should_generate_on_date(date(2024, 2, 28), 31))
