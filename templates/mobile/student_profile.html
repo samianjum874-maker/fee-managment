@@ -791,7 +791,8 @@
           alert(data.error || 'Failed to generate voucher');
           return;
         }
-        alert(data.message || 'Voucher generated');
+        const statusText = data.read_only ? 'This voucher is already paid or partially paid and is now shown in read-only mode.' : (data.message || 'Voucher generated');
+        alert(statusText);
         if (resp.ok) window.location.reload();
       } catch (err) {
         alert('Error generating voucher: ' + err.message);

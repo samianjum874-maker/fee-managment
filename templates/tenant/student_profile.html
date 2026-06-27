@@ -449,7 +449,6 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
         if (saveForFuture) {
             formData.append('save_for_future', '1');
         }
-        console.log('[DEBUG] POST /api/manual-generate-single/ with data:', formData.toString());
         const resp = await fetch('/api/manual-generate-single/', {
             method: 'POST',
             headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -458,31 +457,35 @@ async function generateWithCustom(customAmount, customItems = [], saveForFuture 
         const data = await resp.json();
         if (data.error) {
             alert('Error: ' + data.error);
-        } else {
-            const detailBox = document.createElement('div');
-            detailBox.id = 'modalInfo';
-            detailBox.innerHTML = `
-                <div class="item-summary-box" style="margin-bottom: 0.8rem;">
-                    <div style="font-weight: 700; margin-bottom: 0.3rem;">Voucher Ready</div>
-                    <div><strong>Student:</strong> {{ student.name }}</div>
-                    <div><strong>Period:</strong> ${data.month || '{{ current_month }}/{{ current_year }}'}</div>
-                    <div><strong>Amount:</strong> ₹${Number(data.amount || 0).toFixed(2)}</div>
-                    <div><strong>Status:</strong> ${data.status || 'Pending'}</div>
-                </div>`;
-            const content = modal.querySelector('.modal-content');
-            const existingInfo = document.getElementById('modalInfo');
-            if (existingInfo) existingInfo.remove();
-            content.insertBefore(detailBox, getModalActionsDiv());
-            const amountDiv = amountInput.closest('div');
-            if (amountDiv) amountDiv.style.display = 'none';
-            const actionsDiv = getModalActionsDiv();
-            if (actionsDiv) actionsDiv.style.display = 'none';
-            modalTitle.innerText = 'Voucher Generated';
-            await refreshData();
-            setTimeout(() => {
-                window.location.reload();
-            }, 700);
+            return;
         }
+        const detailBox = document.createElement('div');
+        detailBox.id = 'modalInfo';
+        const readOnly = Boolean(data.read_only);
+        const headerText = readOnly ? 'Voucher Already Processed' : (data.message && data.message.includes('updated') ? 'Voucher Updated' : 'Voucher Ready');
+        const statusText = data.status || 'Pending';
+        detailBox.innerHTML = `
+            <div class="item-summary-box" style="margin-bottom: 0.8rem;">
+                <div style="font-weight: 700; margin-bottom: 0.3rem;">${headerText}</div>
+                <div><strong>Student:</strong> {{ student.name }}</div>
+                <div><strong>Period:</strong> ${data.month ? `${data.month}/${data.year}` : '{{ current_month }}/{{ current_year }}'}</div>
+                <div><strong>Amount:</strong> ₹${Number(data.amount || 0).toFixed(2)}</div>
+                <div><strong>Status:</strong> ${statusText}</div>
+                ${readOnly ? '<div style="margin-top:0.35rem; color:var(--primary); font-weight:600;">This voucher is already paid or partially paid. You can view or print it from the fee history.</div>' : ''}
+            </div>`;
+        const content = modal.querySelector('.modal-content');
+        const existingInfo = document.getElementById('modalInfo');
+        if (existingInfo) existingInfo.remove();
+        content.insertBefore(detailBox, getModalActionsDiv());
+        const amountDiv = amountInput.closest('div');
+        if (amountDiv) amountDiv.style.display = 'none';
+        const actionsDiv = getModalActionsDiv();
+        if (actionsDiv) actionsDiv.style.display = 'none';
+        modalTitle.innerText = readOnly ? 'Voucher Already Processed' : 'Voucher Generated';
+        await refreshData();
+        setTimeout(() => {
+            window.location.reload();
+        }, 700);
     } catch(e) {
         console.error('Generation error:', e);
         alert('Error generating fee: ' + e.message);

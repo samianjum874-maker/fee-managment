@@ -1306,12 +1306,6 @@ def manual_generate_single_api(request):
         
         existing_record = FeeRecord.objects.filter(student=student, month=month, year=year).first()
         
-        # If record exists and has any paid amount, prevent modification
-        if existing_record and existing_record.paid_amount > 0:
-            return JsonResponse({
-                "error": f"Fee already exists for {month}/{year} with paid amount ₹{existing_record.paid_amount}. Cannot modify."
-            }, status=400)
-        
         try:
             base_fee, items, total_amount = resolve_student_fee_plan(student, custom_amount=custom_amount, custom_items=custom_items, save_for_future=save_for_future)
         except ValueError as exc:
@@ -1321,19 +1315,29 @@ def manual_generate_single_api(request):
         record_remarks = serialize_fee_items(items)
         
         if existing_record:
+            if existing_record.paid_amount > 0:
+                return JsonResponse({
+                    "message": f"Fee voucher already processed for {student.name} for {month}/{year}.",
+                    "status": existing_record.get_status_display(),
+                    "amount": float(existing_record.amount),
+                    "paid_amount": float(existing_record.paid_amount),
+                    "read_only": True,
+                    "month": month,
+                    "year": year,
+                })
             existing_record.amount = total_amount
             existing_record.due_date = due_date
             existing_record.remarks = record_remarks
             existing_record.save(update_fields=["amount", "due_date", "remarks"])
             print(f"[DEBUG] Updated fee for {student.name} to ₹{total_amount}")
-            return JsonResponse({"message": f"Fee voucher updated for {student.name} for {month}/{year} to ₹{total_amount}."})
+            return JsonResponse({"message": f"Fee voucher updated for {student.name} for {month}/{year} to ₹{total_amount}.", "status": existing_record.get_status_display(), "amount": float(existing_record.amount), "paid_amount": float(existing_record.paid_amount), "read_only": False, "month": month, "year": year})
         else:
             FeeRecord.objects.create(
                 student=student, month=month, year=year,
                 amount=total_amount, due_date=due_date, status="pending", remarks=record_remarks
             )
             print(f"[DEBUG] Created fee for {student.name} with amount ₹{total_amount}")
-            return JsonResponse({"message": f"Fee voucher created for {student.name} for {month}/{year} with amount ₹{total_amount}."})
+            return JsonResponse({"message": f"Fee voucher created for {student.name} for {month}/{year} with amount ₹{total_amount}.", "status": "Pending", "amount": float(total_amount), "paid_amount": 0.0, "read_only": False, "month": month, "year": year})
 
 def student_fee_records_api(request, schema_name, student_id):
     """API: Return JSON list of fee records for a student."""

@@ -80,14 +80,19 @@ def resolve_student_fee_plan(student, custom_amount=None, custom_items=None, sav
         except (TypeError, ValueError):
             raise ValueError('Invalid custom amount')
     else:
-        base_fee = Decimal(str(getattr(student, 'custom_fee', 0) or 0))
-        if base_fee <= 0:
-            fee_struct = FeeStructure.objects.filter(grade=student.grade).first()
-            if fee_struct:
-                base_fee = fee_struct.monthly_fee
-                if hasattr(student, 'custom_fee'):
-                    student.custom_fee = base_fee
-                    student.save(update_fields=['custom_fee'])
+        grade = getattr(student, 'grade', None)
+        fee_struct = None
+        if grade:
+            fee_struct = FeeStructure.objects.filter(grade=grade).first()
+        if fee_struct:
+            base_fee = fee_struct.monthly_fee
+        else:
+            base_fee = Decimal(str(getattr(student, 'custom_fee', 0) or 0))
+
+        if base_fee > 0 and hasattr(student, 'custom_fee') and getattr(student, 'custom_fee', 0) in {None, 0}:
+            student.custom_fee = base_fee
+            if hasattr(student, 'save'):
+                student.save(update_fields=['custom_fee'])
 
     if base_fee <= 0:
         raise ValueError('No fee structure defined for this grade and no valid custom amount provided.')

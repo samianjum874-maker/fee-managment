@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from axis_saas.fee_utils import calculate_fee_total, resolve_student_fee_plan, should_generate_on_date
@@ -25,3 +26,14 @@ class FeeUtilsTests(SimpleTestCase):
     def test_should_generate_on_date_uses_last_day_for_short_months(self):
         self.assertTrue(should_generate_on_date(date(2024, 2, 29), 31))
         self.assertFalse(should_generate_on_date(date(2024, 2, 28), 31))
+
+    @patch('axis_saas.models.FeeStructure')
+    def test_resolve_student_fee_plan_prefers_grade_structure_over_student_custom_fee(self, fee_structure_cls):
+        student = SimpleNamespace(grade='Grade 8', custom_fee=Decimal('2500'))
+        fee_structure_cls.objects.filter.return_value.first.return_value = SimpleNamespace(monthly_fee=Decimal('1800'))
+
+        base_fee, items, total_amount = resolve_student_fee_plan(student)
+
+        self.assertEqual(base_fee, Decimal('1800'))
+        self.assertEqual(items, [])
+        self.assertEqual(total_amount, Decimal('1800'))

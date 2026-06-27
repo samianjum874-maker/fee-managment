@@ -325,10 +325,12 @@
     <span>How it works</span>
   </div>
   <ul>
-    <li><strong>Automatic Generation:</strong> On the selected day of each month, the system creates fee records for all active students based on their assigned fee structure.</li>
+    <li><strong>Automatic Generation:</strong> On the selected day of each month, the system creates fee records for all active students using the class fee structure first.</li>
+    <li><strong>Per-Student Overrides:</strong> If an admin sets a custom fee for a student for the current month, that amount is used for that voucher only, while future months revert to the class structure unless saved.</li>
+    <li><strong>Saved Extra Charges:</strong> Additional items can be saved for future vouchers and reused automatically when generating a new voucher.</li>
     <li><strong>Due Date:</strong> Fee becomes due after the configured offset days (e.g., generation on 1st with 15 days offset → due on 16th).</li>
     <li><strong>Late Fee:</strong> After due date, the penalty percentage is applied to the pending amount automatically.</li>
-    <li><strong>Manual Generation:</strong> Click the button above to force generation for current month (useful for testing or after setup).</li>
+    <li><strong>Manual Generation:</strong> Click the button above to force generation for the current month and skip students that already have a paid voucher.</li>
   </ul>
 </div>
 
