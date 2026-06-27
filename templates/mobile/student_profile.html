@@ -773,6 +773,11 @@
       }
       openVoucherModal();
     });
+
+    const mobileQueryParams = new URLSearchParams(window.location.search);
+    if (mobileQueryParams.get('open_voucher') === '1') {
+      setTimeout(() => openVoucherModal(), 150);
+    }
     closeVoucher?.addEventListener('click', closeVoucherModal);
     cancelVoucher?.addEventListener('click', closeVoucherModal);
     voucherModal?.addEventListener('click', function(e) { if (e.target === this) closeVoucherModal(); });

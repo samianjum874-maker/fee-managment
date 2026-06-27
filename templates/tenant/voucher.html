@@ -40,6 +40,8 @@
     </div>
     {% if message %}
     <div class="notice">{{ message }}</div>
+    {% else %}
+    <div class="notice">This voucher is ready for print and download. Use the actions below to review or update it.</div>
     {% endif %}
     <div class="actions">
       <a href="{% url 'student_profile' schema_name=tenant.schema_name student_id=student.id %}" class="btn-secondary">Back to Profile</a>
